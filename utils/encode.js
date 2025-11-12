@@ -1,4 +1,4 @@
-function encode(data) {
+export function encode(data) {
     let res = ''
 
     if (Buffer.isBuffer(data)) {
@@ -43,5 +43,3 @@ function encode(data) {
         return res
     }
 }
-
-module.exports = { encode }

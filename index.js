@@ -1,13 +1,12 @@
-const fs = require('node:fs');
-const { parseMetadata } = require('./utils/parseMetaData');
-const { encode } = require('./utils/encode');
-const crypto = require('crypto');
+import fs from "node:fs"
+import bencode from 'bencode'
+import crypto from 'crypto'
 
 try {
     const data = fs.readFileSync('./test2.torrent')
-    const res = parseMetadata(data)
+    const res = bencode.decode(data)
 
-    const bencoded = encode(res['value']['info'])
+    const bencoded = bencode.encode(res['info'])
 
     const hash = crypto.createHash('sha1');
     hash.update(bencoded)

@@ -1,4 +1,4 @@
-function parseMetadata(data, i = 0) {
+export function parseMetadata(data, i = 0) {
     let res = []
 
     while (i < data.length) {
@@ -60,5 +60,3 @@ function parseMetadata(data, i = 0) {
 
     return { value: res, index: i }
 }
-
-module.exports = { parseMetadata }
