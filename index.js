@@ -1,12 +1,13 @@
 import fs from "node:fs"
 import bencode from 'bencode'
-import dgram from 'node:dgram'
-import dns from 'dns'
-import { bufferToEncoding, generateInfoHash, getDNS, getPiecesArr } from "./lib/utils.js"
+import { bufferToEncoding, generateInfoHash, generateRandomString, getDNS, getPiecesArr } from "./lib/utils.js"
+import { UDP_Protocol } from "./udp_protocol.js"
 
 try {
-    const data = fs.readFileSync('./test2.torrent')
+    const data = fs.readFileSync('./test.torrent')
     const res = bencode.decode(data)
+
+    const totalFileLength = res['info']['files']?.reduce((total, curr) => total + curr?.length, 0)
 
     // Get tracker url
     const trackerUrl = bufferToEncoding(res['announce'], 'utf8')
@@ -21,26 +22,10 @@ try {
 
     const serverAddress = await getDNS(hostName)
 
-    const server = dgram.createSocket('udp4');
-
     const serverPort = 6969;
 
-    const buf = Buffer.alloc(16)
-    buf.writeBigUInt64BE(0x41727101980n, 0)
-    buf.writeUInt32BE(0, 8)
-
-    const transactionId = Math.floor(Math.random() * 0xffffffff);
-    buf.writeUInt32BE(transactionId, 12);
-
-    server.send(buf, 0, buf.length, serverPort, serverAddress, (err) => {
-        if (err) console.error('Send error:', err);
-        else console.log('Connect request sent');
-    });
-
-    server.on('message', (res, rinfo) => {
-        console.log('res', res, rinfo)
-    });
-
+    const udpServer = new UDP_Protocol(serverAddress, serverPort, infoHash, totalFileLength)
+    udpServer.connectRequest()
 
     setInterval(() => { }, 1000)
 } catch (err) {
