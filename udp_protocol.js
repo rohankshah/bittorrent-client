@@ -35,17 +35,44 @@ export class UDP_Protocol {
     recieveMessageCallback = (res, rinfo) => {
         console.log('res', res, rinfo)
 
+        // Announce response
         if (res.byteLength >= 20) {
-            console.log('announce response returned')
+            const action = res?.readUInt32BE(0, 5)
+            const responseTransactionId = res?.readUInt32BE(4, 9)
+            const interval = res?.readUInt32BE(8, 13)
+            const leechers = res?.readUInt32BE(12, 17)
+            const seeders = res?.readUInt32BE(16, 21)
+
+            const peers = []
+            let i = 20
+            while (i < res.byteLength) {
+                const peer = res?.slice(i, i + 6)
+                const ip = [peer[0], peer[1], peer[2], peer[3]].join('.')
+                const port = peer?.readUInt16BE(4)
+                const peerObj = { ip, port }
+                peers.push(peerObj)
+                i = i + 6
+            }
+
+            const trackerAnnounceResponse = {
+                action,
+                responseTransactionId,
+                interval,
+                leechers,
+                seeders,
+                peers
+            }
+
+            console.log(trackerAnnounceResponse)
         }
 
+        // Connect response
         if (res.byteLength >= 16) {
             const action = res.subarray(0, 5)?.readUInt32BE()
             const transactionId = res.subarray(4, 9)?.readUInt32BE()
             const connectionId = res.subarray(8, 17)?.readBigUInt64BE()
 
             if (action === 0 && transactionId === this.transactionId) {
-                console.log('is connect Response')
                 this.connectionId = connectionId
                 this.announceRequest()
             }
@@ -66,15 +93,23 @@ export class UDP_Protocol {
     announceRequest() {
         this.resetTransactionId()
 
+        const infoHashBuf = Buffer.from(this.infoHash, 'hex');
+        const peerIdBuf = Buffer.from(this.peerId);
+
+        // console.log(this.connectionId)
+        // console.log(BigInt(this.connectionId))
+
         const buf = Buffer.alloc(98)
         // Connection Id
         buf.writeBigUInt64BE(BigInt(this.connectionId), 0)
         // Action - Announce (1)
         buf.writeUInt32BE(1, 8)
+        // Action - Announce (1)
+        buf.writeUInt32BE(this.transactionId, 12)
         // Info hash
-        buf.write(this.infoHash, 16)
+        infoHashBuf.copy(buf, 16)
         // Peer Id
-        buf.write(this.peerId, 36)
+        peerIdBuf.copy(buf, 36)
         // Downloaded
         buf.writeBigUInt64BE(BigInt(0), 56)
         // Left
@@ -88,7 +123,7 @@ export class UDP_Protocol {
         // key - Optional not important atm
         buf.writeUInt32BE(79012, 88)
         // num_want - (-1) default
-        buf.writeUInt32BE(50, 92)
+        buf.writeInt32BE(-1, 92)
         // port - 6881 rn
         buf.writeUInt16BE(6881, 96)
 

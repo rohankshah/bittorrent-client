@@ -1,10 +1,10 @@
 import fs from "node:fs"
 import bencode from 'bencode'
-import { bufferToEncoding, generateInfoHash, getDNS, getPiecesArr } from "./lib/utils.js"
+import { bufferToEncoding, generateInfoHash, generateRandomString, getDNS, getPiecesArr } from "./lib/utils.js"
 import { UDP_Protocol } from "./udp_protocol.js"
 
 try {
-    const data = fs.readFileSync('./test2.torrent')
+    const data = fs.readFileSync('./test.torrent')
     const res = bencode.decode(data)
 
     const totalFileLength = res['info']['files']?.reduce((total, curr) => total + curr?.length, 0)
@@ -26,7 +26,6 @@ try {
 
     const udpServer = new UDP_Protocol(serverAddress, serverPort, infoHash, totalFileLength)
     udpServer.connectRequest()
-
 
     setInterval(() => { }, 1000)
 } catch (err) {
