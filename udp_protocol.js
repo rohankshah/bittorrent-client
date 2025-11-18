@@ -26,14 +26,11 @@ export class UDP_Protocol {
             if (err) {
                 console.log('Send error:', err)
             }
-            else {
-                console.log('Request sent');
-            }
         });
     }
 
     recieveMessageCallback = (res, rinfo) => {
-        console.log('res', res, rinfo)
+        // console.log('res', res, rinfo)
 
         // Announce response
         if (res.byteLength >= 20) {
@@ -63,7 +60,9 @@ export class UDP_Protocol {
                 peers
             }
 
-            console.log(trackerAnnounceResponse)
+            if (this.onAnnounce) {
+                this.onAnnounce(trackerAnnounceResponse)
+            }
         }
 
         // Connect response
@@ -95,9 +94,6 @@ export class UDP_Protocol {
 
         const infoHashBuf = Buffer.from(this.infoHash, 'hex');
         const peerIdBuf = Buffer.from(this.peerId);
-
-        // console.log(this.connectionId)
-        // console.log(BigInt(this.connectionId))
 
         const buf = Buffer.alloc(98)
         // Connection Id
