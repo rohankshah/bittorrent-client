@@ -34,8 +34,23 @@ export class Peer_Protocol {
             this.socket.write(buf)
         })
 
-        this.socket.on('data', (chunk) => {
-            console.log(`Data from ${this.host}:${this.port}:`, chunk)
+        this.socket.on('data', (data) => {
+            console.log(`Data from ${this.host}:${this.port}:`, data)
+
+            // Receiving handshake back
+            if (data[0] === 19) {
+                const len = data?.readUInt8(0)
+                const messageId = data?.subarray(1, 20)?.toString('ascii')
+                const reserved = data?.subarray(20, 28)?.readUint32BE()
+                const infoHash = data?.subarray(28, 48)?.toString('hex')
+                const peerId = data?.subarray(48, 68)?.toString()
+
+                console.log('Start----------------')
+                console.log(len, messageId, reserved)
+                console.log(infoHash, this.infoHash, infoHash === this.infoHash)
+                console.log(peerId, this.peerId, peerId === this.peerId)
+                console.log('------------------END')
+            }
         })
 
         this.socket.on('error', (err) => {

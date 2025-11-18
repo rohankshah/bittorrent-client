@@ -29,7 +29,6 @@ try {
     const udpServer = new UDP_Protocol(serverAddress, serverPort, infoHash, totalFileLength)
 
     // Get peer list and send handshake
-    
     udpServer.onAnnounce = (res) => {
         const peers = res['peers']
         for (let i = 0; i < peers.length; i++) {
