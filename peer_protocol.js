@@ -45,6 +45,12 @@ export class Peer_Protocol {
                 const infoHash = data?.subarray(28, 48)?.toString('hex')
                 const peerId = data?.subarray(48, 68)?.toString()
 
+
+                // Only proceed if...
+                if (infoHash === this.infoHash) {
+
+                }
+
                 console.log('Start----------------')
                 console.log(len, messageId, reserved)
                 console.log(infoHash, this.infoHash, infoHash === this.infoHash)
