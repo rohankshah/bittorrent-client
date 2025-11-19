@@ -9,6 +9,9 @@ export class Peer_Protocol {
         this.peerId = generateRandomString(20)
 
         this.socket = new net.Socket()
+
+        this.savedBuffer = Buffer.alloc(0)
+        this.handShakeReceived = false
     }
 
     createHandshakeBuffer() {
@@ -35,27 +38,37 @@ export class Peer_Protocol {
         })
 
         this.socket.on('data', (data) => {
-            console.log(`Data from ${this.host}:${this.port}:`, data)
 
-            // Receiving handshake back
-            if (data[0] === 19) {
-                const len = data?.readUInt8(0)
-                const messageId = data?.subarray(1, 20)?.toString('ascii')
-                const reserved = data?.subarray(20, 28)?.readUint32BE()
-                const infoHash = data?.subarray(28, 48)?.toString('hex')
-                const peerId = data?.subarray(48, 68)?.toString()
+            // TCP doesn't return all data altogether. So need to first collect all of it
+            this.savedBuffer = Buffer.concat([this.savedBuffer, data])
+
+            while (this.savedBuffer.byteLength >= 4 && !this.handShakeReceived && this.savedBuffer.byteLength >= 68) {
+                const tempData = this.savedBuffer?.subarray(0, 68)
+                this.savedBuffer = this.savedBuffer.subarray(68)
+
+                // const len = tempData?.readUInt8(0)
+                // const messageId = tempData?.subarray(1, 20)?.toString('ascii')
+                // const reserved = tempData?.subarray(20, 28)?.readUint32BE()
+                const infoHash = tempData?.subarray(28, 48)?.toString('hex')
+                // const peerId = tempData?.subarray(48, 68)?.toString()
 
 
                 // Only proceed if...
                 if (infoHash === this.infoHash) {
-
+                    console.log('received handshake')
+                    this.handShakeReceived = true
                 }
+            }
 
-                console.log('Start----------------')
-                console.log(len, messageId, reserved)
-                console.log(infoHash, this.infoHash, infoHash === this.infoHash)
-                console.log(peerId, this.peerId, peerId === this.peerId)
-                console.log('------------------END')
+            while (this.savedBuffer.byteLength >= 4 && this.handShakeReceived && this.savedBuffer.byteLength >= this.savedBuffer?.readUInt32BE(0) + 4) {
+                const tempData = this.savedBuffer?.subarray(0, 68)
+                this.savedBuffer = this.savedBuffer.subarray(68)
+
+                const length = tempData.readUInt32BE(0)
+                const messageId = tempData.readUInt8(4)
+                const payload = tempData.subarray(5)
+
+                console.log(length, messageId, payload)
             }
         })
 
