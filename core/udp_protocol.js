@@ -1,5 +1,5 @@
 import dgram from 'node:dgram'
-import { generateRandomString } from './lib/utils.js'
+import { generateRandomString } from '../lib/utils.js'
 
 export class UDP_Protocol {
     constructor(serverAddress, serverPort, infoHash, totalFileLength) {
@@ -9,11 +9,12 @@ export class UDP_Protocol {
         this.peerId = generateRandomString(20)
         this.totalFileLength = totalFileLength
 
-        this.server = dgram.createSocket('udp4');
-
         this.transactionId = Math.floor(Math.random() * 0xffffffff);
         this.connectionId = 0
 
+        this.server = dgram.createSocket('udp4');
+
+        // Event listeners
         this.server.on('message', this.recieveMessageCallback);
     }
 
