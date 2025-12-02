@@ -2,7 +2,7 @@ import net from 'net'
 import { generateRandomString } from '../lib/utils.js'
 
 export class Peer_Protocol {
-    constructor(host, port, infoHash, globalPieces) {
+    constructor(host, port, infoHash, globalPieces, disconnectCallback) {
         this.host = host
         this.port = port
         this.infoHash = infoHash
@@ -10,8 +10,17 @@ export class Peer_Protocol {
 
         this.globalPieces = globalPieces
 
+        this.disconnectCallback = disconnectCallback
+
+        this.blocks = []
+
         this.savedBuffer = Buffer.alloc(0)
         this.handShakeReceived = false
+
+        this.peerChoking = true
+        this.amChoking = true
+        this.peerInterested = false
+        this.amInterested = false
 
         this.socket = new net.Socket()
 
@@ -45,7 +54,12 @@ export class Peer_Protocol {
     TCPHandshake() {
         const buf = this.createHandshakeBuffer()
 
+        const timeoutId = setTimeout(() => {
+            this.disconnect()
+        }, 20000)
+
         this.socket.connect({ host: this.host, port: this.port }, () => {
+            clearTimeout(timeoutId)
             console.log(`Connected to ${this.host}:${this.port}`)
             this.socket.write(buf)
         })
@@ -74,7 +88,6 @@ export class Peer_Protocol {
         }
 
         while (this.savedBuffer.byteLength >= 4 && this.handShakeReceived && this.savedBuffer.byteLength >= this.savedBuffer?.readUInt32BE(0) + 4) {
-            
             const tempData = this.savedBuffer?.subarray(0, 68)
             this.savedBuffer = this.savedBuffer.subarray(68)
 
@@ -83,6 +96,20 @@ export class Peer_Protocol {
             const payload = tempData.subarray(5)
 
             switch (parseInt(messageId)) {
+                case 0:
+                    console.log('choke')
+                    this.peerChoking = true
+                    break
+                case 1:
+                    console.log('unchoke')
+                    this.handleUnchoke()
+                    break
+                case 2:
+                    console.log('interested')
+                    break
+                case 3:
+                    console.log('not interested')
+                    break
                 case 5:
                     this.handleBitfield(payload)
                     break
@@ -93,9 +120,19 @@ export class Peer_Protocol {
         }
     }
 
+    handleUnchoke() {
+        this.peerChoking = false
+
+        if (this.blocks && this.blocks.length > 0) {
+            const blockToRequest = this.blocks.pop()
+            this.requestBlock(blockToRequest)
+        }
+    }
+
     handleBitfield(payload) {
         // We read bitfield from right to left
         // The first byte of the bitfield corresponds to indices 0 - 7 from high bit to low bit, respectively. - from the spec
+        let allBlocks = []
         for (let i = 0; i < payload.length; i++) {
             let byte = payload[i]
             for (let j = 0; j < 8; j++) {
@@ -108,14 +145,26 @@ export class Peer_Protocol {
                     }
 
                     const blocks = this.globalPieces.getBlocksForPiece(pieceIndice)
+                    allBlocks = [...allBlocks, ...blocks]
 
-                    blocks.forEach((block) => {
-                        this.requestBlock(block)
-                    })
+                    // this.requestBlock(blocks[0])
+
+                    // Cant send too many at once. Make queue to request instead of directly requesting
+                    // blocks.forEach((block) => {
+                    //     this.requestBlock(block)
+                    // })
                 }
                 // Removes last bit from byte. So next iteration 2nd last bit is the last one
                 byte = Math.floor(byte / 2)
             }
+        }
+
+        // console.log(allBlocks)
+        if (!this.peerChoking && this.amInterested) {
+            const blockToRequest = this.blocks.pop()
+            this.requestBlock(blockToRequest)
+        } else {
+            this.sendInterest()
         }
     }
 
@@ -134,6 +183,25 @@ export class Peer_Protocol {
         buf.writeUInt32BE(block.length, 13);
 
         this.socket.write(buf)
+        console.log('requested')
         this.globalPieces.addBlockToRequested(block)
+    }
+
+    sendInterest() {
+        const buf = Buffer.alloc(17);
+
+        // Length of message
+        buf.writeUInt32BE(4)
+        // MessageId 2 for interested
+        buf.writeUint8(2, 4)
+
+        this.socket.write(buf)
+        this.amInterested = true
+        console.log('send interest')
+    }
+
+    disconnect() {
+        console.log(`disconnecting ${this.host}:${this.port}`)
+        this.disconnectCallback()
     }
 }
