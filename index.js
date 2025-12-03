@@ -52,13 +52,12 @@ try {
 
     // Fired when new peer added
     // Active peers less than 40 && Connect peer
-
     function peerAdded() {
         const activePeers = globalPeers.getNumberOfconnectingPeers()
 
         if (activePeers < 40) {
             const peer = globalPeers.getPeer()
-            const {ip, port} = peer
+            const { ip, port } = peer
 
             function handleConnectionSuccess() {
                 globalPeers.addConnectedPeer(peer)
@@ -80,44 +79,6 @@ try {
             globalPeers.addConnectingPeer(peer)
         }
     }
-
-    // eventEmitter.on('peer-added', peerAdded)
-
-    // const peersCheckInterval = setInterval(() => {
-    //     if (globalPeers.isNewPeerAvailable()) {
-    //         const {ip, port} = globalPeers.getPeer()
-
-    //         const socketInstance = new Peer_Protocol(ip, port, infoHash, globalPieces)
-    //         socketInstance.TCPHandshake()
-
-    //         // Do until 40 or so peers
-    //         // 1. Get a peer
-    //         // 2. Run the whole peer protocol mechanism
-    //         // 3. Check if another peer exists. Move index there
-    //     }
-    // }, [50])
-
-    // Get tracker url
-    // const trackerUrl = bufferToEncoding(res['announce'], 'utf8')
-    // const hostName = new URL(trackerUrl).hostname
-
-    // const serverAddress = await getDNS(hostName)
-
-    // // Send announce request
-    // const udpServer = new UDP_Protocol(serverAddress, serverPort, infoHash, totalFileLength)
-
-    // // Get peer list and send handshake
-    // udpServer.onAnnounce = (res) => {
-    //     const peers = res['peers']
-    //     for (let i = 0; i < peers.length; i++) {
-    //         const ip = res['peers'][i]['ip']
-    //         const port = res['peers'][i]['port']
-
-    //         const socketInstance = new Peer_Protocol(ip, port, infoHash, globalPieces)
-    //         socketInstance.TCPHandshake()
-    //     }
-    // }
-    // udpServer.connectRequest()
 
     setInterval(() => { }, 1000)
 } catch (err) {
