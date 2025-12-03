@@ -1,79 +1,62 @@
 export class Pieces {
+  // PieceType: {
+  //     status: 'NEEDED'|'COMPLETE',
+  //     blocks: BlockType[]
+  // }
 
-    // PieceType: {
-    //     status: 'NEEDED'|'COMPLETE',
-    //     blocks: BlockType[]
-    // }
+  // BlockType: {
+  //      status: 'NEEDED'|'REQUESTED'|'COMPLETE',
+  //      offset: number,
+  //      length: numbe
+  // }
 
-    // BlockType: {
-    //      status: 'NEEDED'|'REQUESTED'|'COMPLETE',
-    //      offset: number,
-    //      length: numbe
-    // }
+  constructor(totalPieces, pieceLength, totalFileLength) {
+    // 16kb block size
+    this.blockSize = 16 * 1024;
+    this.totalFileLength = totalFileLength;
+    this.pieceLength = pieceLength;
+    this.totalPieces = totalPieces;
 
-    constructor(totalPieces, pieceLength, totalFileLength) {
+    // Mapping: PieceType[]
+    this.allPieces = {};
 
-        // 16kb block size
-        this.blockSize = 16 * 1024
-        this.totalFileLength = totalFileLength
-        this.pieceLength = pieceLength
-        this.totalPieces = totalPieces
+    this.initializePieces();
+  }
 
-        // Mapping: PieceType[]
-        this.allPieces = {}
+  initializePieces() {
+    for (let i = 0; i < this.totalPieces; i++) {
+      const currPieceLength = this.getPieceLength(i);
 
-        this.initializePieces()
+      const totalBlocks = Math.ceil(currPieceLength / this.blockSize);
+
+      const blocks = [];
+      let offset = 0;
+
+      for (let j = 0; j < totalBlocks; j++) {
+        const currBlockLength = Math.min(this.blockSize, currPieceLength - offset);
+
+        blocks.push({
+          state: 'NEEDED',
+          offset: offset,
+          length: currBlockLength
+        });
+
+        offset += currBlockLength;
+      }
+
+      this.allPieces[i] = {
+        status: 'NEEDED',
+        blocks: blocks
+      };
+    }
+  }
+
+  getPieceLength(pieceIndex) {
+    if (pieceIndex < this.totalPieces - 1) {
+      return this.pieceLength;
     }
 
-    initializePieces() {
-        for (let i = 0; i < this.totalPieces; i++) {
-            const currPieceLength = this.getPieceLength(i)
-
-            const totalBlocks = Math.ceil(currPieceLength / this.blockSize)
-
-            const blocks = []
-            let offset = 0
-
-            for (let j = 0; j < totalBlocks; j++) {
-                const currBlockLength = Math.min(this.blockSize, currPieceLength - offset)
-
-                blocks.push({
-                    state: 'NEEDED',
-                    offset: offset,
-                    length: currBlockLength
-                })
-
-                offset += currBlockLength
-            }
-
-            this.allPieces[i] = {
-                status: 'NEEDED',
-                blocks: blocks
-            }
-        }
-    }
-
-    getPieceLength(pieceIndex) {
-        if (pieceIndex < this.totalPieces - 1) {
-            return this.pieceLength
-        }
-
-        const lastPieceLength = this.totalFileLength % this.pieceLength
-        return lastPieceLength === 0 ? this.pieceLength : lastPieceLength
-    }
-
-    isPieceInRequested(index) {
-        if (!this.requested[index]) {
-            return false
-        }
-        return true
-    }
-
-    addBlockToRequested(block) {
-        const index = block.begin
-        if (!this.requested[index]) {
-            this.requested[index] = []
-        }
-        this.requested[index].push(block)
-    }
+    const lastPieceLength = this.totalFileLength % this.pieceLength;
+    return lastPieceLength === 0 ? this.pieceLength : lastPieceLength;
+  }
 }
