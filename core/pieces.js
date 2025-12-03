@@ -48,10 +48,6 @@ export class Pieces {
             offset += this.blockSize
         }
 
-        // if (!this.requested[index]) {
-        //     this.requested[index] = blocks
-        // }
-
         return blocks
     }
 }

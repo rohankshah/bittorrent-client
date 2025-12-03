@@ -30,15 +30,8 @@ try {
 
     const udpTrackers = trackerArr.filter(url => url.startsWith("udp://"))
 
-    // let successAmount = 0
-
     for (let i = 0; i < udpTrackers.length; i++) {
         const trackerUrl = udpTrackers[i]
-
-        // if (successAmount === 2) {
-        //     console.log('done')
-        //     break
-        // }
 
         try {
             const hostName = new URL(trackerUrl).hostname
@@ -52,9 +45,7 @@ try {
                 globalPeers.addPeer({ ip: peer.ip, port: peer.port, lastTried: null })
                 peerAdded()
             }
-            // successAmount += 1
         } catch (e) {
-            // console.log()
             e
         }
     }
@@ -63,26 +54,30 @@ try {
     // Active peers less than 40 && Connect peer
 
     function peerAdded() {
-        const activePeers = globalPeers.getNumberOfActivePeers()
+        const activePeers = globalPeers.getNumberOfconnectingPeers()
 
         if (activePeers < 40) {
             const peer = globalPeers.getPeer()
             const {ip, port} = peer
 
-            function removeActivePeerCallback() {
-                globalPeers.removeActivePeer(peer)
-                // console.log(globalPeers.getNumberOfActivePeers())
+            function handleConnectionSuccess() {
+                globalPeers.addConnectedPeer(peer)
+            }
 
-                const newActivePeers = globalPeers.getNumberOfActivePeers()
+            function removeConnectingPeersCallback() {
+                globalPeers.removePeer(peer)
+                // console.log(globalPeers.getNumberOfconnectingPeers())
+
+                const newActivePeers = globalPeers.getNumberOfconnectingPeers()
                 if (newActivePeers < 40) {
                     peerAdded()
                 }
             }
 
-            const socketInstance = new Peer_Protocol(ip, port, infoHash, globalPieces, removeActivePeerCallback)
+            const socketInstance = new Peer_Protocol(ip, port, infoHash, globalPieces, removeConnectingPeersCallback, handleConnectionSuccess, totalFileLength)
             socketInstance.TCPHandshake()
 
-            globalPeers.addActivePeer(peer)
+            globalPeers.addConnectingPeer(peer)
         }
     }
 

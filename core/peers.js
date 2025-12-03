@@ -10,28 +10,37 @@ export class Peers {
 
         this.currentPeerIndex = 0 // Mantan global index for current peer
 
-        this.activePeers = []
+        this.connectingPeers = [] // Peers where we have sent connection request
+
+        this.connectedPeers = [] // Peers that sent handshake back
     }
 
     addPeer(peer) {
         this.peerArr.push(peer)
     }
 
-    addActivePeer(peer) {
-        this.activePeers.push(peer)
+    addConnectingPeer(peer) {
+        this.connectingPeers.push(peer)
     }
 
-    removeActivePeer(peer) {
-        const filtered = this.activePeers.filter((item) => item.ip !== peer.ip && item.port !== peer.port)
-        this.activePeers = filtered
+    removePeer(peer) {
+        const filteredConnecting = this.connectingPeers.filter((item) => item.ip !== peer.ip && item.port !== peer.port)
+        this.connectingPeers = filteredConnecting
+
+        const filteredConnected = this.connectedPeers.filter((item) => item.ip !== peer.ip && item.port !== peer.port)
+        this.connectedPeers = filteredConnected
     }
 
-    getNumberOfActivePeers() {
-        return this.activePeers.length
+    getNumberOfconnectingPeers() {
+        return this.connectingPeers.length
+    }
+
+    addConnectedPeer(peer) {
+        this.connectedPeers.push(peer)
     }
 
     getPeer() {
-        console.log(`trying ${this.currentPeerIndex} out of ${this.peerArr.length}. Current connected: ${this.activePeers.length}`)
+        // console.log(`trying ${this.currentPeerIndex} out of ${this.peerArr.length}. Current connected: ${this.connectedPeers.length}`)
         const peer = this.peerArr[this.currentPeerIndex]
         this.currentPeerIndex += 1
 
