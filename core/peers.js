@@ -35,8 +35,8 @@ export class Peers {
     this.connectedPeers = filteredConnected;
   }
 
-  getNumberOfconnectingPeers() {
-    return this.connectingPeers.length;
+  getNumberOfconnectedPeers() {
+    return this.connectedPeers.length;
   }
 
   addConnectedPeer(peer) {

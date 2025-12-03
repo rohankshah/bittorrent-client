@@ -120,7 +120,7 @@ export class Peer_Protocol {
       const messageId = tempData.readUInt8(4);
       const payload = tempData.subarray(5);
 
-      console.log('messageId', messageId);
+      // console.log('messageId', messageId);
 
       switch (parseInt(messageId)) {
         case 0:
@@ -147,7 +147,7 @@ export class Peer_Protocol {
           this.handleBitfield(payload);
           break;
         case 7:
-          console.log('recieve piece');
+          this.handleReceivePiece(payload)
           break;
       }
     }
@@ -197,6 +197,11 @@ export class Peer_Protocol {
     }
   }
 
+  handleReceivePiece(payload) {
+    console.log('recevied piece')
+    console.log(payload)
+  }
+
   requestBlock(block) {
     const buf = Buffer.alloc(17);
 
@@ -213,7 +218,6 @@ export class Peer_Protocol {
 
     this.socket.write(buf);
     console.log('requested');
-    this.globalPieces.addBlockToRequested(block);
   }
 
   sendInterest() {

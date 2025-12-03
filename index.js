@@ -49,7 +49,7 @@ try {
 
       for (const peer of res.peers) {
         globalPeers.addPeer({ ip: peer.ip, port: peer.port, lastTried: null });
-        peerAdded();
+        handleNewPeer();
       }
     } catch (e) {
       e;
@@ -58,10 +58,10 @@ try {
 
   // Fired when new peer added
   // Active peers less than 40 && Connect peer
-  function peerAdded() {
-    const activePeers = globalPeers.getNumberOfconnectingPeers();
+  function handleNewPeer() {
+    const connectedPeers = globalPeers.getNumberOfconnectedPeers();
 
-    if (activePeers < 40) {
+    if (connectedPeers < 40) {
       const peer = globalPeers.getPeer();
       const { ip, port } = peer;
 
@@ -71,11 +71,9 @@ try {
 
       function removeConnectingPeersCallback() {
         globalPeers.removePeer(peer);
-        // console.log(globalPeers.getNumberOfconnectingPeers())
 
-        const newActivePeers = globalPeers.getNumberOfconnectingPeers();
-        if (newActivePeers < 40) {
-          peerAdded();
+        if (globalPeers.getNumberOfconnectedPeers() < 40) {
+          handleNewPeer();
         }
       }
 
