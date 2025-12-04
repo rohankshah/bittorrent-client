@@ -5,14 +5,14 @@ import {
   getAllTrackers,
   getDNS,
   getPiecesArr,
-  requestAnnounceWithTimeout
+  requestAnnounceWithTimeout,
+  shuffle
 } from './lib/utils.js';
 import { UDP_Protocol } from './core/udp_protocol.js';
 import { Peer_Protocol } from './core/peer_protocol.js';
 import { Pieces } from './core/pieces.js';
 import { Peers } from './core/peers.js';
-
-const serverPort = 6969;
+import { SERVER_PORT } from './constants/consts.js';
 
 try {
   const data = fs.readFileSync('./test.torrent');
@@ -34,7 +34,7 @@ try {
 
   const globalPieces = new Pieces(pieces.length, pieceLength, totalFileLength);
 
-  const udpTrackers = trackerArr.filter((url) => url.startsWith('udp://'));
+  const udpTrackers = shuffle(trackerArr.filter((url) => url.startsWith('udp://')));
 
   for (let i = 0; i < udpTrackers.length; i++) {
     const trackerUrl = udpTrackers[i];
@@ -43,7 +43,7 @@ try {
       const hostName = new URL(trackerUrl).hostname;
       const serverAddress = await getDNS(hostName);
 
-      const udpServer = new UDP_Protocol(serverAddress, serverPort, infoHash, totalFileLength);
+      const udpServer = new UDP_Protocol(serverAddress, SERVER_PORT, infoHash, totalFileLength);
 
       const res = await requestAnnounceWithTimeout(udpServer);
 
@@ -52,7 +52,7 @@ try {
         handleNewPeer();
       }
     } catch (e) {
-      e;
+      console.error("Tracker error:", e);
     }
   }
 
@@ -84,6 +84,7 @@ try {
         globalPieces,
         removeConnectingPeersCallback,
         handleConnectionSuccess,
+        pieceLength,
         totalFileLength
       );
       socketInstance.TCPHandshake();

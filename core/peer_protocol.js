@@ -1,5 +1,6 @@
 import net from 'net';
 import { generateRandomString, getBlocksForPiece } from '../lib/utils.js';
+import { PEER_BLOCK_TIMEOUT } from '../constants/consts.js';
 
 export class Peer_Protocol {
   constructor(
@@ -9,8 +10,8 @@ export class Peer_Protocol {
     globalPieces,
     disconnectCallback,
     connectSuccessCallback,
-    totalFileLength,
-    blockSize = 16 * 1024
+    pieceLength,
+    totalFileLength
   ) {
     this.host = host;
     this.port = port;
@@ -22,10 +23,22 @@ export class Peer_Protocol {
     this.disconnectCallback = disconnectCallback;
     this.connectSuccessCallback = connectSuccessCallback;
 
+    this.pieceLength = pieceLength;
     this.totalFileLength = totalFileLength;
-    this.blockSize = blockSize;
 
+    this.currentPiece = null;
+
+    // Arr which stores pieceIndices for the pieces this peer has
+    this.peerPieces = [];
+
+    // This is where we store the original bitfield blocks
     this.blocks = [];
+    // This is where we store the requested blocks
+    this.requestedBlocks = [];
+    // This is where we store the blocks that are complete
+    this.downloadedBlocks = [];
+
+    this.currentRequestTimeout = null;
 
     this.savedBuffer = Buffer.alloc(0);
     this.handShakeReceived = false;
@@ -65,6 +78,7 @@ export class Peer_Protocol {
   }
 
   TCPHandshake() {
+    // console.log(`trying ${this.host}:${this.port}`)
     const buf = this.createHandshakeBuffer();
 
     const timeoutId = setTimeout(() => {
@@ -73,7 +87,7 @@ export class Peer_Protocol {
 
     this.socket.connect({ host: this.host, port: this.port }, () => {
       clearTimeout(timeoutId);
-      // console.log(`Connected to ${this.host}:${this.port}`)
+      console.log(`Connected to ${this.host}:${this.port}`);
       this.socket.write(buf);
     });
   }
@@ -98,7 +112,7 @@ export class Peer_Protocol {
 
       // Only proceed if...
       if (infoHash === this.infoHash) {
-        console.log('received handshake');
+        // console.log('received handshake');
         this.handShakeReceived = true;
         this.connectSuccessCallback();
       } else {
@@ -147,7 +161,7 @@ export class Peer_Protocol {
           this.handleBitfield(payload);
           break;
         case 7:
-          this.handleReceivePiece(payload)
+          this.handleReceivePiece(payload);
           break;
       }
     }
@@ -156,50 +170,123 @@ export class Peer_Protocol {
   handleUnchoke() {
     this.peerChoking = false;
 
-    if (this.blocks && this.blocks.length > 0) {
-      const blockToRequest = this.blocks.pop();
-      this.requestBlock(blockToRequest);
-    }
+    this.handleRequestBlock();
   }
 
   handleBitfield(payload) {
+    console.log('bitfield');
+
     // We read bitfield from right to left
     // The first byte of the bitfield corresponds to indices 0 - 7 from high bit to low bit, respectively. - from the spec
     let allBlocks = [];
+    let allPieces = [];
     for (let i = 0; i < payload.length; i++) {
-      let byte = payload[i];
+      const byte = payload[i];
       for (let j = 0; j < 8; j++) {
-        // If byte is 1
-        if (byte % 2) {
-          const pieceIndice = i * 8 + (7 - j);
+        // Calculate the mask for the current bit.
+        const mask = 1 << (7 - j);
 
-          // if (this.globalPieces.isPieceInRequested(pieceIndice)) {
-          //     continue
-          // }
+        if ((byte & mask) !== 0) {
+          const pieceIndice = i * 8 + j;
 
-          // const blocks = this.globalPieces.getBlocksForPiece(pieceIndice)
-          const blocks = getBlocksForPiece(pieceIndice, this.totalFileLength, this.blockSize);
-          allBlocks = [...allBlocks, ...blocks];
+          allPieces.push(pieceIndice);
+
+          // const blocks = getBlocksForPiece(pieceIndice, this.pieceLength, this.totalFileLength);
+
+          // allBlocks = [...allBlocks, ...blocks];
         }
-        // Removes last bit from byte. So next iteration 2nd last bit is the last one
-        byte = Math.floor(byte / 2);
       }
     }
 
-    this.blocks = allBlocks;
+    this.peerPieces = allPieces;
 
     if (!this.peerChoking && this.amInterested) {
-      const blockToRequest = this.blocks.pop();
-      console.log('requesting block', blockToRequest);
-      this.requestBlock(blockToRequest);
+      this.handleRequestBlock();
     } else {
       this.sendInterest();
     }
   }
 
   handleReceivePiece(payload) {
-    console.log('recevied piece')
-    console.log(payload)
+
+    console.log('received block', payload)
+
+    // Clear currentRequestTimeout
+    this.currentRequestTimeout = null;
+
+    const completedBlock = this.requestedBlocks.pop();
+    this.downloadedBlocks.push(completedBlock);
+    this.handleRequestBlock();
+  }
+
+  // Get piece:
+  // We check bitfield piece to see if it's needed
+  // If not we move on to next piece.
+  // If no pieces are needed and/or all pieces in the array are over, we just return undefined and end function
+  getNeededPiece() {
+    if (this.peerPieces.length === 0) return null;
+
+    let pieceNeeded = this.peerPieces.pop();
+
+    while (pieceNeeded !== undefined && !this.globalPieces.checkIfPieceNeeded(pieceNeeded)) {
+      pieceNeeded = this.peerPieces.pop();
+    }
+
+    return pieceNeeded === undefined ? null : pieceNeeded;
+  }
+
+  // Get block that's needed
+  // We check block to see if needed.
+  // If not we move to next block
+  // If all blocks are done, we return and move back to next piece
+  getNeededBlockForPiece() {
+    if (!this.blocks || this.blocks.length === 0) return null;
+
+    let block = this.blocks.pop();
+
+    while (block !== undefined && !this.globalPieces.checkIfBlockNeeded(this.currentPiece, block)) {
+      block = this.blocks.pop();
+    }
+
+    return block === undefined ? null : block;
+  }
+
+  handleRequestBlock() {
+    // If some block is already requested, then return
+    if (this.currentRequestTimeout) return;
+
+    if (!this.blocks || this.blocks.length === 0) {
+      const piece = this.getNeededPiece();
+      if (piece === null) return null;
+
+      this.currentPiece = piece;
+      this.blocks = getBlocksForPiece(piece, this.pieceLength, this.totalFileLength);
+    }
+
+    let block = this.getNeededBlockForPiece();
+
+    while (block === null) {
+      const piece = this.getNeededPiece();
+      if (piece === null) return null;
+
+      this.currentPiece = piece;
+      this.blocks = getBlocksForPiece(piece, this.pieceLength, this.totalFileLength);
+
+      block = this.getNeededBlockForPiece();
+    }
+
+    console.log('blockrequest', block);
+
+    this.requestedBlocks.push(block);
+    this.requestBlock(block);
+
+    // If data not received in 20 seconds then timeout
+    this.currentRequestTimeout = setTimeout(() => {
+      const timeoutBlock = this.requestedBlocks.pop();
+      this.blocks.unshift(timeoutBlock);
+      this.currentRequestTimeout = null;
+      this.handleRequestBlock();
+    }, PEER_BLOCK_TIMEOUT);
   }
 
   requestBlock(block) {
