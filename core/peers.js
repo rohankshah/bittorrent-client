@@ -10,8 +10,6 @@ export class Peers {
 
     this.currentPeerIndex = 0; // Mantan global index for current peer
 
-    this.connectingPeers = []; // Peers where we have sent connection request
-
     this.connectedPeers = []; // Peers that sent handshake back
   }
 
@@ -19,16 +17,7 @@ export class Peers {
     this.peerArr.push(peer);
   }
 
-  addConnectingPeer(peer) {
-    this.connectingPeers.push(peer);
-  }
-
   removePeer(peer) {
-    const filteredConnecting = this.connectingPeers.filter(
-      (item) => item.ip !== peer.ip && item.port !== peer.port
-    );
-    this.connectingPeers = filteredConnecting;
-
     const filteredConnected = this.connectedPeers.filter(
       (item) => item.ip !== peer.ip && item.port !== peer.port
     );
@@ -52,17 +41,5 @@ export class Peers {
       this.currentPeerIndex = 0;
     }
     return peer;
-  }
-
-  getPeerLength() {
-    return this.peerArr.length;
-  }
-
-  // Check if new peer available
-  isNewPeerAvailable() {
-    if (this.peerArr.length > this.currentPeerIndex) {
-      return true;
-    }
-    return false;
   }
 }

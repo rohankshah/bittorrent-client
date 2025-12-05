@@ -1,6 +1,7 @@
 import net from 'net';
 import { generateRandomString, getBlocksForPiece } from '../lib/utils.js';
 import { PEER_BLOCK_TIMEOUT } from '../constants/consts.js';
+import { createHandshakeBuffer } from '../lib/createMessages.js';
 
 export class Peer_Protocol {
   constructor(
@@ -48,46 +49,30 @@ export class Peer_Protocol {
     this.peerInterested = false;
     this.amInterested = false;
 
+    this.socket = null
+
+    this.initializeSocket()
+    this.peerHandshake()
+  }
+
+  initializeSocket() {
     this.socket = new net.Socket();
 
     // Event listeners
     this.socket.on('data', (data) => this.listenData(data));
-
     this.socket.on('error', (err) => {
       // console.log(`Error connecting to ${ip}:${gggggg}:`, err.message)
     });
-
     this.socket.on('close', () => {
       // console.log(`Connection closed: ${ip}:${port}`)
+      this.disconnect()
     });
   }
 
-  createHandshakeBuffer() {
-    const buf = Buffer.alloc(68);
-    buf.writeUInt8(19, 0);
-    buf.write('BitTorrent protocol', 1);
-    buf.writeBigUInt64BE(0n, 20);
-
-    const infoHashBuf = Buffer.from(this.infoHash, 'hex');
-    infoHashBuf.copy(buf, 28);
-
-    const peerIdBuf = Buffer.from(this.peerId);
-    peerIdBuf.copy(buf, 48);
-
-    return buf;
-  }
-
-  TCPHandshake() {
-    // console.log(`trying ${this.host}:${this.port}`)
-    const buf = this.createHandshakeBuffer();
-
-    const timeoutId = setTimeout(() => {
-      this.disconnect();
-    }, 20000);
-
+  peerHandshake() {
+    const buf = createHandshakeBuffer(this.infoHash, this.peerId);
     this.socket.connect({ host: this.host, port: this.port }, () => {
-      clearTimeout(timeoutId);
-      console.log(`Connected to ${this.host}:${this.port}`);
+      // console.log(`Connected to ${this.host}:${this.port}`);
       this.socket.write(buf);
     });
   }
@@ -104,11 +89,7 @@ export class Peer_Protocol {
       const tempData = this.savedBuffer?.subarray(0, 68);
       this.savedBuffer = this.savedBuffer.subarray(68);
 
-      // const len = tempData?.readUInt8(0)
-      const messageId = tempData?.subarray(1, 20)?.toString('ascii');
-      // const reserved = tempData?.subarray(20, 28)?.readUint32BE()
       const infoHash = tempData?.subarray(28, 48)?.toString('hex');
-      // const peerId = tempData?.subarray(48, 68)?.toString()
 
       // Only proceed if...
       if (infoHash === this.infoHash) {
@@ -152,7 +133,7 @@ export class Peer_Protocol {
           console.log('not interested');
           break;
         case 4:
-          // Won't implement this
+          // Won't implement this right now
           // A malicious peer might also choose to advertise having pieces that it knows the peer will never download.
           // Due to this attempting to model peers using this information is a bad idea.
           // ---- According to bit wiki spec
@@ -169,13 +150,10 @@ export class Peer_Protocol {
 
   handleUnchoke() {
     this.peerChoking = false;
-
-    this.handleRequestBlock();
+    // this.handleRequestBlock();
   }
 
   handleBitfield(payload) {
-    console.log('bitfield');
-
     // We read bitfield from right to left
     // The first byte of the bitfield corresponds to indices 0 - 7 from high bit to low bit, respectively. - from the spec
     let allBlocks = [];
@@ -208,8 +186,7 @@ export class Peer_Protocol {
   }
 
   handleReceivePiece(payload) {
-
-    console.log('received block', payload)
+    console.log('received block', payload);
 
     // Clear currentRequestTimeout
     this.currentRequestTimeout = null;

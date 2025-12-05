@@ -1,17 +1,17 @@
 import { BLOCK_SIZE, Status } from '../constants/consts.js';
 
+// PieceType: {
+//     status: 'NEEDED'|'COMPLETE',
+//     blocks: BlockType[]
+// }
+
+// BlockType: {
+//      status: 'NEEDED'|'REQUESTED'|'COMPLETE',
+//      offset: number,
+//      length: number
+// }
+
 export class Pieces {
-  // PieceType: {
-  //     status: 'NEEDED'|'COMPLETE',
-  //     blocks: BlockType[]
-  // }
-
-  // BlockType: {
-  //      status: 'NEEDED'|'REQUESTED'|'COMPLETE',
-  //      offset: number,
-  //      length: number
-  // }
-
   constructor(totalPieces, pieceLength, totalFileLength) {
     // 16kb block size
     this.totalFileLength = totalFileLength;
@@ -74,14 +74,17 @@ export class Pieces {
   }
 
   checkIfBlockNeeded(pieceIndex, block) {
-    if (!this.checkIfPieceNeeded(pieceIndex)) return false
+    if (!this.checkIfPieceNeeded(pieceIndex)) return false;
 
     const piece = this.allPieces[pieceIndex];
 
-    const currBlock = piece.blocks.find((item) => item.offset === block.offset && item.length === block.length)
+    const currBlock = piece.blocks.find(
+      (item) => item.offset === block.offset && item.length === block.length
+    );
 
-    if (!currBlock || currBlock.status === Status.COMPLETE || currBlock.status === Status.REQUESTED) return false
+    if (!currBlock || currBlock.status === Status.COMPLETE || currBlock.status === Status.REQUESTED)
+      return false;
 
-    return true
+    return true;
   }
 }

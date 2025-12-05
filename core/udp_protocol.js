@@ -1,5 +1,6 @@
 import dgram from 'node:dgram';
 import { generateRandomString } from '../lib/utils.js';
+import { createUdpAnnounceRequest, createUdpConnectPacket } from '../lib/createMessages.js';
 
 export class UDP_Protocol {
   constructor(serverAddress, serverPort, infoHash, totalFileLength) {
@@ -12,9 +13,13 @@ export class UDP_Protocol {
     this.transactionId = Math.floor(Math.random() * 0xffffffff);
     this.connectionId = 0;
 
-    this.server = dgram.createSocket('udp4');
+    this.server = null
 
-    // Event listeners
+    this.initializeUdpServer()
+  }
+
+  initializeUdpServer() {
+    this.server = dgram.createSocket('udp4');
     this.server.on('message', this.recieveMessageCallback);
   }
 
@@ -81,48 +86,20 @@ export class UDP_Protocol {
 
   connectRequest() {
     // Create connect packet
-    const buf = Buffer.alloc(16);
-
-    buf.writeBigUInt64BE(0x41727101980n, 0);
-    buf.writeUInt32BE(0, 8);
-    buf.writeUInt32BE(this.transactionId, 12);
-
+    const buf = createUdpConnectPacket(this.transactionId);
     this.sendPacket(buf);
   }
 
   announceRequest() {
     this.resetTransactionId();
 
-    const infoHashBuf = Buffer.from(this.infoHash, 'hex');
-    const peerIdBuf = Buffer.from(this.peerId);
-
-    const buf = Buffer.alloc(98);
-    // Connection Id
-    buf.writeBigUInt64BE(BigInt(this.connectionId), 0);
-    // Action - Announce (1)
-    buf.writeUInt32BE(1, 8);
-    // Action - Announce (1)
-    buf.writeUInt32BE(this.transactionId, 12);
-    // Info hash
-    infoHashBuf.copy(buf, 16);
-    // Peer Id
-    peerIdBuf.copy(buf, 36);
-    // Downloaded
-    buf.writeBigUInt64BE(BigInt(0), 56);
-    // Left
-    buf.writeBigUInt64BE(BigInt(this.totalFileLength), 64);
-    // Uploaded
-    buf.writeBigUInt64BE(BigInt(0), 72);
-    // Event - None (0)
-    buf.writeUInt32BE(0, 80);
-    // IP address - (0)
-    buf.writeUInt32BE(0, 84);
-    // key - Optional not important atm
-    buf.writeUInt32BE(79012, 88);
-    // num_want - (-1) default
-    buf.writeInt32BE(-1, 92);
-    // port - 6881 rn
-    buf.writeUInt16BE(6881, 96);
+    const buf = createUdpAnnounceRequest(
+      this.infoHash,
+      this.peerId,
+      this.connectionId,
+      this.transactionId,
+      this.totalFileLength
+    );
 
     this.sendPacket(buf);
   }

@@ -1,12 +1,8 @@
 import fs from 'node:fs';
-import bencode from 'bencode';
 import {
-  generateInfoHash,
-  getAllTrackers,
   getDNS,
-  getPiecesArr,
+  readTorrentData,
   requestAnnounceWithTimeout,
-  shuffle
 } from './lib/utils.js';
 import { UDP_Protocol } from './core/udp_protocol.js';
 import { Peer_Protocol } from './core/peer_protocol.js';
@@ -16,25 +12,12 @@ import { SERVER_PORT } from './constants/consts.js';
 
 try {
   const data = fs.readFileSync('./test.torrent');
-  const res = bencode.decode(data);
 
-  const totalFileLength = res['info']['files']?.reduce((total, curr) => total + curr?.length, 0);
-
-  // Calculate infohash
-  const infoHash = generateInfoHash(res['info']);
-
-  // Extract pieces SHA1 array
-  const piecesObj = res['info']['pieces'];
-  const pieceLength = res['info']['piece length'];
-  const pieces = getPiecesArr(piecesObj);
-
-  const trackerArr = getAllTrackers(res);
+  const { totalFileLength, infoHash, pieceLength, pieces, udpTrackers } = readTorrentData(data);
 
   const globalPeers = new Peers();
 
   const globalPieces = new Pieces(pieces.length, pieceLength, totalFileLength);
-
-  const udpTrackers = shuffle(trackerArr.filter((url) => url.startsWith('udp://')));
 
   for (let i = 0; i < udpTrackers.length; i++) {
     const trackerUrl = udpTrackers[i];
@@ -52,7 +35,7 @@ try {
         handleNewPeer();
       }
     } catch (e) {
-      console.error("Tracker error:", e);
+      // console.error("Tracker error:", e);
     }
   }
 
@@ -87,9 +70,6 @@ try {
         pieceLength,
         totalFileLength
       );
-      socketInstance.TCPHandshake();
-
-      globalPeers.addConnectingPeer(peer);
     }
   }
 
