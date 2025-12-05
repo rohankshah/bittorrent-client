@@ -1,125 +1,79 @@
-import fs from "node:fs"
-import bencode from 'bencode'
-import { generateInfoHash, getAllTrackers, getDNS, getPiecesArr, requestAnnounceWithTimeout } from "./lib/utils.js"
-import { UDP_Protocol } from "./core/udp_protocol.js"
-import { Peer_Protocol } from "./core/peer_protocol.js"
-import { Pieces } from "./core/pieces.js"
-import { Peers } from "./core/peers.js"
-
-const serverPort = 6969;
+import fs from 'node:fs';
+import {
+  getDNS,
+  readTorrentData,
+  requestAnnounceWithTimeout,
+} from './lib/utils.js';
+import { UDP_Protocol } from './core/udp_protocol.js';
+import { Peer_Protocol } from './core/peer_protocol.js';
+import { Pieces } from './core/pieces.js';
+import { Peers } from './core/peers.js';
+import { SERVER_PORT } from './constants/consts.js';
 
 try {
-    const data = fs.readFileSync('./test.torrent')
-    const res = bencode.decode(data)
+  const data = fs.readFileSync('./test.torrent');
 
-    const totalFileLength = res['info']['files']?.reduce((total, curr) => total + curr?.length, 0)
+  const { totalFileLength, infoHash, pieceLength, pieces, udpTrackers } = readTorrentData(data);
 
-    // Calculate infohash
-    const infoHash = generateInfoHash(res['info'])
+  const globalPeers = new Peers();
 
-    // Extract pieces SHA1 array
-    const piecesObj = res['info']['pieces']
-    const pieceLength = res['info']['piece length']
-    const pieces = getPiecesArr(piecesObj)
+  const globalPieces = new Pieces(pieces.length, pieceLength, totalFileLength);
 
-    const trackerArr = getAllTrackers(res)
+  for (let i = 0; i < udpTrackers.length; i++) {
+    const trackerUrl = udpTrackers[i];
 
-    const globalPeers = new Peers()
+    try {
+      const hostName = new URL(trackerUrl).hostname;
+      const serverAddress = await getDNS(hostName);
 
-    const globalPieces = new Pieces(pieces.length, pieceLength, totalFileLength)
+      const udpServer = new UDP_Protocol(serverAddress, SERVER_PORT, infoHash, totalFileLength);
 
-    const udpTrackers = trackerArr.filter(url => url.startsWith("udp://"))
+      const res = await requestAnnounceWithTimeout(udpServer);
 
-    for (let i = 0; i < udpTrackers.length; i++) {
-        const trackerUrl = udpTrackers[i]
-
-        try {
-            const hostName = new URL(trackerUrl).hostname
-            const serverAddress = await getDNS(hostName)
-
-            const udpServer = new UDP_Protocol(serverAddress, serverPort, infoHash, totalFileLength)
-
-            const res = await requestAnnounceWithTimeout(udpServer)
-
-            for (const peer of res.peers) {
-                globalPeers.addPeer({ ip: peer.ip, port: peer.port, lastTried: null })
-                peerAdded()
-            }
-        } catch (e) {
-            e
-        }
+      for (const peer of res.peers) {
+        globalPeers.addPeer({ ip: peer.ip, port: peer.port, lastTried: null });
+        handleNewPeer();
+      }
+    } catch (e) {
+      // console.error("Tracker error:", e);
     }
+  }
 
-    // Fired when new peer added
-    // Active peers less than 40 && Connect peer
+  // Fired when new peer added
+  // Active peers less than 40 && Connect peer
+  function handleNewPeer() {
+    const connectedPeers = globalPeers.getNumberOfconnectedPeers();
 
-    function peerAdded() {
-        const activePeers = globalPeers.getNumberOfconnectingPeers()
+    if (connectedPeers < 40) {
+      const peer = globalPeers.getPeer();
+      const { ip, port } = peer;
 
-        if (activePeers < 40) {
-            const peer = globalPeers.getPeer()
-            const {ip, port} = peer
+      function handleConnectionSuccess() {
+        globalPeers.addConnectedPeer(peer);
+      }
 
-            function handleConnectionSuccess() {
-                globalPeers.addConnectedPeer(peer)
-            }
+      function removeConnectingPeersCallback() {
+        globalPeers.removePeer(peer);
 
-            function removeConnectingPeersCallback() {
-                globalPeers.removePeer(peer)
-                // console.log(globalPeers.getNumberOfconnectingPeers())
-
-                const newActivePeers = globalPeers.getNumberOfconnectingPeers()
-                if (newActivePeers < 40) {
-                    peerAdded()
-                }
-            }
-
-            const socketInstance = new Peer_Protocol(ip, port, infoHash, globalPieces, removeConnectingPeersCallback, handleConnectionSuccess, totalFileLength)
-            socketInstance.TCPHandshake()
-
-            globalPeers.addConnectingPeer(peer)
+        if (globalPeers.getNumberOfconnectedPeers() < 40) {
+          handleNewPeer();
         }
+      }
+
+      const socketInstance = new Peer_Protocol(
+        ip,
+        port,
+        infoHash,
+        globalPieces,
+        removeConnectingPeersCallback,
+        handleConnectionSuccess,
+        pieceLength,
+        totalFileLength
+      );
     }
+  }
 
-    // eventEmitter.on('peer-added', peerAdded)
-
-    // const peersCheckInterval = setInterval(() => {
-    //     if (globalPeers.isNewPeerAvailable()) {
-    //         const {ip, port} = globalPeers.getPeer()
-
-    //         const socketInstance = new Peer_Protocol(ip, port, infoHash, globalPieces)
-    //         socketInstance.TCPHandshake()
-
-    //         // Do until 40 or so peers
-    //         // 1. Get a peer
-    //         // 2. Run the whole peer protocol mechanism
-    //         // 3. Check if another peer exists. Move index there
-    //     }
-    // }, [50])
-
-    // Get tracker url
-    // const trackerUrl = bufferToEncoding(res['announce'], 'utf8')
-    // const hostName = new URL(trackerUrl).hostname
-
-    // const serverAddress = await getDNS(hostName)
-
-    // // Send announce request
-    // const udpServer = new UDP_Protocol(serverAddress, serverPort, infoHash, totalFileLength)
-
-    // // Get peer list and send handshake
-    // udpServer.onAnnounce = (res) => {
-    //     const peers = res['peers']
-    //     for (let i = 0; i < peers.length; i++) {
-    //         const ip = res['peers'][i]['ip']
-    //         const port = res['peers'][i]['port']
-
-    //         const socketInstance = new Peer_Protocol(ip, port, infoHash, globalPieces)
-    //         socketInstance.TCPHandshake()
-    //     }
-    // }
-    // udpServer.connectRequest()
-
-    setInterval(() => { }, 1000)
+  setInterval(() => {}, 1000);
 } catch (err) {
-    console.error(err);
+  console.error(err);
 }

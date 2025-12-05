@@ -1,53 +1,90 @@
+import { BLOCK_SIZE, Status } from '../constants/consts.js';
+
+// PieceType: {
+//     status: 'NEEDED'|'COMPLETE',
+//     blocks: BlockType[]
+// }
+
+// BlockType: {
+//      status: 'NEEDED'|'REQUESTED'|'COMPLETE',
+//      offset: number,
+//      length: number
+// }
+
 export class Pieces {
-    constructor(totalPieces, pieceLength, totalFileLength) {
+  constructor(totalPieces, pieceLength, totalFileLength) {
+    // 16kb block size
+    this.totalFileLength = totalFileLength;
+    this.pieceLength = pieceLength;
+    this.totalPieces = totalPieces;
 
-        // 16kb block size
-        this.blockSize = 16 * 1024
-        this.totalFileLength = totalFileLength
-        this.pieceLength = pieceLength
-        this.totalPieces = totalPieces
+    // Mapping: PieceType[]
+    this.allPieces = {};
 
-        // Mapping: PieceIndex -> Block[]
-        this.requested = {};
-        this.downloaded = {};
+    this.initializePieces();
+  }
+
+  initializePieces() {
+    for (let i = 0; i < this.totalPieces; i++) {
+      const currPieceLength = this.getPieceLength(i);
+
+      const totalBlocks = Math.ceil(currPieceLength / BLOCK_SIZE);
+
+      const blocks = [];
+      let offset = 0;
+
+      for (let j = 0; j < totalBlocks; j++) {
+        const currBlockLength = Math.min(BLOCK_SIZE, currPieceLength - offset);
+
+        blocks.push({
+          state: Status.NEEDED,
+          offset: offset,
+          length: currBlockLength
+        });
+
+        offset += currBlockLength;
+      }
+
+      this.allPieces[i] = {
+        status: Status.NEEDED,
+        blocks: blocks
+      };
+    }
+  }
+
+  getPieceLength(pieceIndex) {
+    if (pieceIndex < this.totalPieces - 1) {
+      return this.pieceLength;
     }
 
-    isPieceInRequested(index) {
-        if (!this.requested[index]) {
-            return false
-        }
-        return true
+    const lastPieceLength = this.totalFileLength % this.pieceLength;
+    return lastPieceLength === 0 ? this.pieceLength : lastPieceLength;
+  }
+
+  checkIfPieceNeeded(pieceIndex) {
+    const piece = this.allPieces[pieceIndex];
+
+    if (!piece) return false;
+
+    if (piece.status === Status.NEEDED) {
+      return true;
     }
 
-    addBlockToRequested(block) {
-        const index = block.begin
-        if (!this.requested[index]) {
-            this.requested[index] = []
-        }
-        this.requested[index].push(block)
-    }
+    return false;
+  }
 
-    getBlocksForPiece(index) {
-        const pieceStart = index * this.pieceLength
+  checkIfBlockNeeded(pieceIndex, block) {
+    if (!this.checkIfPieceNeeded(pieceIndex)) return false;
 
-        let thisPieceLength = this.pieceLength
-        if (pieceStart + this.pieceLength > this.totalFileLength) {
-            thisPieceLength = this.totalFileLength - pieceStart
-        }
+    const piece = this.allPieces[pieceIndex];
 
-        const blocks = []
-        let offset = 0
+    const currBlock = piece.blocks.find(
+      (item) => item.offset === block.offset && item.length === block.length
+    );
 
-        while (offset < thisPieceLength) {
-            const length = Math.min(this.blockSize, thisPieceLength - offset)
-            blocks.push({
-                index: index,
-                begin: offset,
-                length: length
-            })
-            offset += this.blockSize
-        }
+    if (!currBlock || currBlock.status === Status.COMPLETE || currBlock.status === Status.REQUESTED)
+      return false;
 
-        return blocks
-    }
+    return true;
+  }
 }
