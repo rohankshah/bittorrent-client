@@ -4,10 +4,10 @@ import {
   readTorrentData,
   requestAnnounceWithTimeout,
 } from './lib/utils.js';
-import { UDP_Protocol } from './core/udp_protocol.js';
-import { Peer_Protocol } from './core/peer_protocol.js';
-import { Pieces } from './core/pieces.js';
-import { Peers } from './core/peers.js';
+import { Tracker } from './core/Tracker.js';
+import { Peer } from './core/Peer.js';
+import { Pieces } from './core/Pieces.js';
+import { PeerPool } from './core/PeerPool.js';
 import { SERVER_PORT } from './constants/consts.js';
 
 try {
@@ -15,9 +15,9 @@ try {
 
   const { totalFileLength, infoHash, pieceLength, pieces, udpTrackers } = readTorrentData(data);
 
-  const globalPeers = new Peers();
+  const peerPool = new PeerPool();
 
-  const globalPieces = new Pieces(pieces.length, pieceLength, totalFileLength);
+  const globalPieces = new Pieces(peerPool, pieces.length, pieceLength, totalFileLength);
 
   for (let i = 0; i < udpTrackers.length; i++) {
     const trackerUrl = udpTrackers[i];
@@ -26,12 +26,12 @@ try {
       const hostName = new URL(trackerUrl).hostname;
       const serverAddress = await getDNS(hostName);
 
-      const udpServer = new UDP_Protocol(serverAddress, SERVER_PORT, infoHash, totalFileLength);
+      const tracker = new Tracker(serverAddress, SERVER_PORT, infoHash, totalFileLength);
 
-      const res = await requestAnnounceWithTimeout(udpServer);
+      const res = await requestAnnounceWithTimeout(tracker);
 
       for (const peer of res.peers) {
-        globalPeers.addPeer({ ip: peer.ip, port: peer.port, lastTried: null });
+        peerPool.addPeer({ ip: peer.ip, port: peer.port, lastTried: null });
         handleNewPeer();
       }
     } catch (e) {
@@ -42,34 +42,42 @@ try {
   // Fired when new peer added
   // Active peers less than 40 && Connect peer
   function handleNewPeer() {
-    const connectedPeers = globalPeers.getNumberOfconnectedPeers();
+    const connectedPeers = peerPool.getNumberOfconnectedPeers();
 
     if (connectedPeers < 40) {
-      const peer = globalPeers.getPeer();
+      const peer = peerPool.getPeer();
       const { ip, port } = peer;
 
       function handleConnectionSuccess() {
-        globalPeers.addConnectedPeer(peer);
+        peerPool.addConnectedPeer(peer);
       }
 
       function removeConnectingPeersCallback() {
-        globalPeers.removePeer(peer);
+        peerPool.removePeer(peer);
+        peerPool.removeFromPeerDetailsMap(ip, port)
 
-        if (globalPeers.getNumberOfconnectedPeers() < 40) {
+        if (peerPool.getNumberOfconnectedPeers() < 40) {
           handleNewPeer();
         }
       }
 
-      const socketInstance = new Peer_Protocol(
+      function handleAddBitfield(bitfield) {
+        peerPool.addBitfieldToPeerMap(ip, port, bitfield)
+      }
+
+      const socketInstance = new Peer(
         ip,
         port,
         infoHash,
         globalPieces,
         removeConnectingPeersCallback,
         handleConnectionSuccess,
+        handleAddBitfield,
         pieceLength,
         totalFileLength
       );
+
+      peerPool.addToPeerDetailsMap(ip, port, socketInstance)
     }
   }
 

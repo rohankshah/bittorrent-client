@@ -2,7 +2,14 @@ import dgram from 'node:dgram';
 import { generateRandomString } from '../lib/utils.js';
 import { createUdpAnnounceRequest, createUdpConnectPacket } from '../lib/createMessages.js';
 
-export class UDP_Protocol {
+export class Tracker {
+  /**
+   *
+   * @param {string} serverAddress
+   * @param {string} serverPort
+   * @param {string} infoHash
+   * @param {number} totalFileLength
+   */
   constructor(serverAddress, serverPort, infoHash, totalFileLength) {
     this.serverAddress = serverAddress;
     this.serverPort = serverPort;
@@ -13,9 +20,9 @@ export class UDP_Protocol {
     this.transactionId = Math.floor(Math.random() * 0xffffffff);
     this.connectionId = 0;
 
-    this.server = null
+    this.server = null;
 
-    this.initializeUdpServer()
+    this.initializeUdpServer();
   }
 
   initializeUdpServer() {
