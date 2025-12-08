@@ -1,4 +1,4 @@
-import { BLOCK_SIZE, Status } from '../constants/consts.js';
+import { BLOCK_SIZE, MAX_PEER_REQUESTS, Status } from '../constants/consts.js';
 import { PeerPool } from './PeerPool.js';
 
 /**
@@ -95,11 +95,15 @@ export class Pieces {
 
       if (typeof block === null) continue;
 
-      // console.log('bloooo', block)
+      if (peerObj?.instance?.getRequestedQueueLength() < MAX_PEER_REQUESTS) {
+        peerObj?.instance?.requestBlock(block);
+
+        this.markBlockRequested(piece, block);
+      }
+
+      // peerObj?.instance?
 
       // Add to peer request queue
-
-      // Mark globalBlock as requested
 
       // console.log(peerKey, ' is free');
     }
@@ -131,6 +135,21 @@ export class Pieces {
     }
 
     return null;
+  }
+
+  markBlockRequested(pieceIndex, block) {
+    const piece = this.allPieces[pieceIndex];
+    if (!piece) return;
+
+    const foundBlock = piece.blocks.find(
+      (item) => item.offset === block.offset && item.length === block.length
+    );
+
+    console.log('foundBlock', foundBlock)
+
+    if (!foundBlock) return;
+
+    foundBlock.status = Status.REQUESTED;
   }
 
   checkIsPieceNeeded(index) {

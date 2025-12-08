@@ -17,8 +17,6 @@ export class Peer {
    * @param {() => void} disconnectCallback
    * @param {() => void} connectSuccessCallback
    * @param {(number[]) => void} handleAddBitfieldCallback
-   * @param {number} pieceLength
-   * @param {number} totalFileLength
    */
   constructor(
     host,
@@ -27,9 +25,7 @@ export class Peer {
     globalPieces,
     disconnectCallback,
     connectSuccessCallback,
-    handleAddBitfieldCallback,
-    pieceLength,
-    totalFileLength
+    handleAddBitfieldCallback
   ) {
     this.host = host;
     this.port = port;
@@ -42,21 +38,9 @@ export class Peer {
     this.connectSuccessCallback = connectSuccessCallback;
     this.handleAddBitfield = handleAddBitfieldCallback;
 
-    this.pieceLength = pieceLength;
-    this.totalFileLength = totalFileLength;
-
-    this.currentPiece = null;
-
-    // Arr which stores pieceIndices for the pieces this peer has
-    this.peerPieces = [];
     this.bitfieldReceived = false;
 
-    // This is where we store the original bitfield blocks
-    this.blocks = [];
-    // This is where we store the requested blocks
-    this.requestedBlocks = [];
-    // This is where we store the blocks that are complete
-    this.downloadedBlocks = [];
+    this.requestedQueue = [];
 
     this.savedBuffer = Buffer.alloc(0);
     this.handShakeReceived = false;
@@ -168,8 +152,6 @@ export class Peer {
   handleBitfield(payload) {
     let allPieces = getPiecesFromBitfield(payload);
 
-    this.peerPieces = allPieces;
-
     this.handleAddBitfield(allPieces);
 
     this.bitfieldReceived = true;
@@ -178,17 +160,22 @@ export class Peer {
   }
 
   handleReceivePiece(payload) {
-    console.log('received block', payload);
-
-    const completedBlock = this.requestedBlocks.pop();
-    this.downloadedBlocks.push(completedBlock);
+    const pieceIndex = payload.readUInt32BE()
+    const blockOffset = payload.readUInt32BE(4)
+    console.log('received block', pieceIndex, blockOffset);
   }
 
   requestBlock(block) {
     const buf = createRequestBlockBuffer(block);
 
     this.socket.write(buf);
+
+    this.requestedQueue.push({ ...block, requested: Date.now() });
     console.log('requested');
+  }
+
+  getRequestedQueueLength() {
+    return this.requestedQueue.length
   }
 
   sendInterest() {
@@ -207,7 +194,6 @@ export class Peer {
   }
 
   disconnect() {
-    // console.log(`disconnecting ${this.host}:${this.port}`)
     this.disconnectCallback();
   }
 }

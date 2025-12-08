@@ -87,9 +87,7 @@ export class TorrentClient {
         this.globalPieces,
         removeConnectingPeersCallback,
         handleConnectionSuccess,
-        handleAddBitfield,
-        this.pieceLength,
-        this.totalFileLength
+        handleAddBitfield
       );
 
       this.peerPool.addToPeerDetailsMap(ip, port, socketInstance);
