@@ -1,11 +1,10 @@
-import { SERVER_PORT } from '../constants/consts.js';
+import { DOWNLOAD_FOLDER, SERVER_PORT } from '../constants/consts.js';
 import { createFile, createFolder } from '../lib/files.js';
 import { bufferToEncoding, getDNS, requestAnnounceWithTimeout } from '../lib/utils.js';
 import { Peer } from './Peer.js';
 import { PeerPool } from './PeerPool.js';
 import { Pieces } from './Pieces.js';
 import { Tracker } from './Tracker.js';
-import fs from 'node:fs';
 
 export class TorrentClient {
   constructor({ totalFileLength, infoHash, pieceLength, pieces, udpTrackers, files, name }) {
@@ -33,8 +32,9 @@ export class TorrentClient {
   }
 
   initializeFileStructure() {
-    const parsedName = bufferToEncoding(this.name, 'utf8');
-    // Create name folder
+    const parsedName = DOWNLOAD_FOLDER + bufferToEncoding(this.name, 'utf8');
+
+    // // Create name folder
     createFolder(parsedName);
 
     // Create files/folders inside
