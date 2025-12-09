@@ -104,7 +104,17 @@ export class Peer {
     }
 
     while (this.savedBuffer.byteLength >= 4 && this.handShakeReceived) {
-      const totalMessageLength = this.savedBuffer.readUInt32BE(0) + 4;
+      // const totalMessageLength = this.savedBuffer.readUInt32BE(0) + 4;
+
+      const length = this.savedBuffer.readUInt32BE(0);
+
+      // Keep-alive message
+      if (length === 0) {
+        this.savedBuffer = this.savedBuffer.subarray(4);
+        continue;
+      }
+
+      const totalMessageLength = length + 4;
 
       // Wait for more data
       if (this.savedBuffer.byteLength < totalMessageLength) {
@@ -161,9 +171,19 @@ export class Peer {
   }
 
   handleReceivePiece(payload) {
-    const pieceIndex = payload.readUInt32BE()
-    const blockOffset = payload.readUInt32BE(4)
+    const pieceIndex = payload.readUInt32BE();
+    const blockOffset = payload.readUInt32BE(4);
+    const data = payload.subarray(8);
     console.log('received block', pieceIndex, blockOffset);
+
+    console.log('requestedQueue', this.requestedQueue);
+
+    this.requestedQueue = this.requestedQueue.filter(
+      (block) => !(block.index === pieceIndex && block.offset === blockOffset)
+    );
+
+    console.log('requestedQueue', this.requestedQueue);
+    this.globalPieces.markBlockDownloaded(pieceIndex, blockOffset, data);
   }
 
   requestBlock(block) {
@@ -172,11 +192,11 @@ export class Peer {
     this.socket.write(buf);
 
     this.requestedQueue.push({ ...block, requested: Date.now() });
-    console.log('requested');
+    // console.log('requested');
   }
 
   getRequestedQueueLength() {
-    return this.requestedQueue.length
+    return this.requestedQueue.length;
   }
 
   sendInterest() {

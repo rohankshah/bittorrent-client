@@ -14,6 +14,12 @@ import { PeerPool } from './PeerPool.js';
  * @property {Block[]} blocks
  */
 
+/**
+ * @typedef {Object} File
+ * @property {number} length
+ * @property {string[]} path
+ */
+
 export class Pieces {
   /**
    *
@@ -21,20 +27,25 @@ export class Pieces {
    * @param {number} totalPieces
    * @param {number} pieceLength
    * @param {number} totalFileLength
+   * @param {File} files
    */
-  constructor(peerPool, totalPieces, pieceLength, totalFileLength) {
+  constructor(peerPool, totalPieces, pieceLength, totalFileLength, files) {
     this.peerPool = peerPool;
 
     // 16kb block size
     this.totalFileLength = totalFileLength;
     this.pieceLength = pieceLength;
     this.totalPieces = totalPieces;
+    this.files = files;
 
     /**
      * @type {Piece[]}
      */
     this.allPieces = {};
 
+    this.pieceBuffers = [];
+
+    this.initializePieceBuffers();
     this.initializePieces();
     this.runDownload();
   }
@@ -56,6 +67,7 @@ export class Pieces {
 
         blocks.push({
           status: Status.NEEDED,
+          index: i,
           offset: offset,
           length: currBlockLength
         });
@@ -68,6 +80,13 @@ export class Pieces {
         blocks: blocks
       };
     }
+  }
+
+  initializePieceBuffers() {
+    this.pieceBuffers = Array.from({ length: this.totalPieces }).map((_, i) => {
+      const currPieceLength = this.getPieceLength(i);
+      return Buffer.alloc(currPieceLength);
+    });
   }
 
   getPieceLength(pieceIndex) {
@@ -88,27 +107,23 @@ export class Pieces {
       // Find what piece is needed
       const piece = this.getPieceNeededForPeer(peerObj?.bitfield);
 
-      if (typeof piece === null) continue;
+      if (piece === null) continue;
 
       // Get needed block for that piece
       const block = this.getBlockNeededForPiece(piece);
 
-      if (typeof block === null) continue;
+      if (block === null) continue;
 
       if (peerObj?.instance?.getRequestedQueueLength() < MAX_PEER_REQUESTS) {
         peerObj?.instance?.requestBlock(block);
 
         this.markBlockRequested(piece, block);
       }
-
-      // peerObj?.instance?
-
-      // Add to peer request queue
-
-      // console.log(peerKey, ' is free');
     }
 
-    setImmediate(() => this.runDownload());
+    const delay = freePeers.length === 0 ? 50 : 0;
+
+    setTimeout(() => this.runDownload(), delay);
   }
 
   findAvailablePeers() {
@@ -145,11 +160,26 @@ export class Pieces {
       (item) => item.offset === block.offset && item.length === block.length
     );
 
-    console.log('foundBlock', foundBlock)
-
     if (!foundBlock) return;
 
     foundBlock.status = Status.REQUESTED;
+  }
+
+  markBlockDownloaded(pieceIndex, blockOffset, data) {
+    const piece = this.allPieces[pieceIndex];
+    if (!piece) return;
+
+    const foundBlock = piece.blocks.find((item) => item.offset === blockOffset);
+
+    if (!foundBlock) return;
+
+    const pieceBuffer = this.pieceBuffers[pieceIndex];
+
+    data.copy(pieceBuffer, blockOffset);
+
+    foundBlock.status = Status.COMPLETE;
+
+    console.log('found block', foundBlock);
   }
 
   checkIsPieceNeeded(index) {
