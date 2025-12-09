@@ -1,17 +1,21 @@
 import { SERVER_PORT } from '../constants/consts.js';
-import { getDNS, requestAnnounceWithTimeout } from '../lib/utils.js';
+import { createFile, createFolder } from '../lib/files.js';
+import { bufferToEncoding, getDNS, requestAnnounceWithTimeout } from '../lib/utils.js';
 import { Peer } from './Peer.js';
 import { PeerPool } from './PeerPool.js';
 import { Pieces } from './Pieces.js';
 import { Tracker } from './Tracker.js';
+import fs from 'node:fs';
 
 export class TorrentClient {
-  constructor({ totalFileLength, infoHash, pieceLength, pieces, udpTrackers }) {
+  constructor({ totalFileLength, infoHash, pieceLength, pieces, udpTrackers, files, name }) {
     this.infoHash = infoHash;
     this.totalFileLength = totalFileLength;
     this.pieceLength = pieceLength;
     this.pieces = pieces;
     this.udpTrackers = udpTrackers;
+    this.files = files;
+    this.name = name;
 
     this.peerPool = new PeerPool();
 
@@ -24,7 +28,32 @@ export class TorrentClient {
   }
 
   async start() {
+    this.initializeFileStructure();
     await this.startTrackerAnnounce();
+  }
+
+  initializeFileStructure() {
+    const parsedName = bufferToEncoding(this.name, 'utf8');
+    // Create name folder
+    createFolder(parsedName);
+
+    // Create files/folders inside
+    for (let i = 0; i < this.files.length; i++) {
+      const fileObj = this.files[i];
+      // const fileLength = fileObj.length;
+      const path = [];
+      fileObj['path'].forEach((item) => path.push(bufferToEncoding(item, 'utf8')));
+
+      const folderPath =
+        path?.length > 1 && [parsedName, ...path.slice(0, path.length - 1)]?.join('/');
+      if (folderPath) {
+        createFolder(folderPath);
+      }
+
+      const filePath = [parsedName, ...path].join('/');
+
+      createFile(filePath, Buffer.alloc(0));
+    }
   }
 
   async startTrackerAnnounce() {
