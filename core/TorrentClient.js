@@ -1,6 +1,7 @@
 import { DOWNLOAD_FOLDER, SERVER_PORT } from '../constants/consts.js';
-import { createFile, createFolder } from '../lib/files.js';
-import { bufferToEncoding, getDNS, requestAnnounceWithTimeout } from '../lib/utils.js';
+import { createFile, createFolder } from '../lib/fileHelpers.js';
+import { bufferToEncoding, requestAnnounceWithTimeout } from '../lib/torrentHelpers.js';
+import { getDNS } from '../lib/utils.js';
 import { Peer } from './Peer.js';
 import { PeerPool } from './PeerPool.js';
 import { Pieces } from './Pieces.js';

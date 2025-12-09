@@ -4,7 +4,7 @@
 // Keep upto 40 connections alive.
 // Peers are rotated if a particular connection giving issues (choked or not uploading for 30-40 seconds)
 
-import { constructPeerKey } from '../lib/utils.js';
+import { constructPeerKey } from '../lib/torrentHelpers.js';
 import { Peer } from './Peer.js';
 
 /**

@@ -1,11 +1,12 @@
 import net from 'net';
-import { generateRandomString, getPiecesFromBitfield } from '../lib/utils.js';
+import { generateRandomString } from '../lib/utils.js';
 import {
   createHandshakeBuffer,
   createInterestBuffer,
   createRequestBlockBuffer
 } from '../lib/createMessages.js';
 import { Pieces } from './Pieces.js';
+import { getPiecesFromBitfield } from '../lib/torrentHelpers.js';
 
 export class Peer {
   /**

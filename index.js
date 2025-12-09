@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { readTorrentData } from './lib/utils.js';
+import { readTorrentData } from './lib/torrentHelpers.js';
 import { TorrentClient } from './core/TorrentClient.js';
 
 try {
