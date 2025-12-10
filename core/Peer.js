@@ -174,15 +174,10 @@ export class Peer {
     const pieceIndex = payload.readUInt32BE();
     const blockOffset = payload.readUInt32BE(4);
     const data = payload.subarray(8);
-    console.log('received block', pieceIndex, blockOffset);
-
-    console.log('requestedQueue', this.requestedQueue);
 
     this.requestedQueue = this.requestedQueue.filter(
       (block) => !(block.index === pieceIndex && block.offset === blockOffset)
     );
-
-    console.log('requestedQueue', this.requestedQueue);
     this.globalPieces.markBlockDownloaded(pieceIndex, blockOffset, data);
   }
 

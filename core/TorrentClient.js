@@ -21,6 +21,7 @@ export class TorrentClient {
 
     this.globalPieces = new Pieces(
       this.peerPool,
+      this.pieces,
       this.pieces.length,
       this.pieceLength,
       this.totalFileLength,

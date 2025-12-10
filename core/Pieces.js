@@ -1,5 +1,6 @@
 import { BLOCK_SIZE, MAX_PEER_REQUESTS, Status } from '../constants/consts.js';
 import { PeerPool } from './PeerPool.js';
+import crypto from 'crypto';
 
 /**
  * @typedef {Object} Block
@@ -12,6 +13,7 @@ import { PeerPool } from './PeerPool.js';
  * @typedef {Object} Piece
  * @property {'NEEDED' | 'COMPLETE'} status
  * @property {Block[]} blocks
+ * @property {number} completed
  */
 
 /**
@@ -24,17 +26,19 @@ export class Pieces {
   /**
    *
    * @param {PeerPool} peerPool
+   * @param {string[]} pieceHashes
    * @param {number} totalPieces
    * @param {number} pieceLength
    * @param {number} totalFileLength
    * @param {File} files
    */
-  constructor(peerPool, totalPieces, pieceLength, totalFileLength, files) {
+  constructor(peerPool, pieceHashes, totalPieces, pieceLength, totalFileLength, files) {
     this.peerPool = peerPool;
 
     // 16kb block size
     this.totalFileLength = totalFileLength;
     this.pieceLength = pieceLength;
+    this.pieceHashes = pieceHashes;
     this.totalPieces = totalPieces;
     this.files = files;
 
@@ -77,7 +81,8 @@ export class Pieces {
 
       this.allPieces[i] = {
         status: Status.NEEDED,
-        blocks: blocks
+        blocks: blocks,
+        completed: 0
       };
     }
   }
@@ -179,7 +184,13 @@ export class Pieces {
 
     foundBlock.status = Status.COMPLETE;
 
-    console.log('found block', foundBlock);
+    piece.completed += 1;
+
+    console.log(piece.completed + '/' + piece.blocks.length)
+
+    if (piece.completed === piece.blocks.length) {
+      this.verifyPiece(pieceIndex);
+    }
   }
 
   checkIsPieceNeeded(index) {
@@ -204,5 +215,35 @@ export class Pieces {
       }
     }
     return null;
+  }
+
+  verifyPiece(pieceIndex) {
+    const pieceBuffer = this.pieceBuffers[pieceIndex];
+
+    const hash = crypto.createHash('sha1');
+    hash.update(pieceBuffer);
+    const calcPieceHash = hash.digest('hex');
+
+    // Todo: Compare to torrent file SHA1 hash
+    const actualPieceHash = this.pieceHashes[pieceIndex];
+    const actualPieceHashHex = actualPieceHash.toString('hex');
+
+    console.log('hashes', calcPieceHash, ' ', actualPieceHashHex);
+
+    const isSame = actualPieceHashHex === calcPieceHash;
+    const piece = this.allPieces[pieceIndex];
+
+    if (isSame) {
+      console.log('is same')
+      piece.status = Status.COMPLETE;
+
+      // Todo: Save to disk
+    } else {
+      console.log('is different')
+      piece.blocks.forEach((block) => block.status === Status.NEEDED);
+
+      const pieceLength = this.getPieceLength(pieceIndex);
+      this.pieceBuffers[pieceIndex] = Buffer.alloc(pieceLength);
+    }
   }
 }
