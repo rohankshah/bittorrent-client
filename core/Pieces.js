@@ -1,5 +1,7 @@
-import { BLOCK_SIZE, MAX_PEER_REQUESTS, Status } from '../constants/consts.js';
+import { BLOCK_SIZE, DOWNLOAD_FOLDER, MAX_PEER_REQUESTS, Status } from '../constants/consts.js';
+import { saveBufferToFile } from '../lib/fileHelpers.js';
 import { PeerPool } from './PeerPool.js';
+import crypto from 'crypto';
 
 /**
  * @typedef {Object} Block
@@ -12,30 +14,49 @@ import { PeerPool } from './PeerPool.js';
  * @typedef {Object} Piece
  * @property {'NEEDED' | 'COMPLETE'} status
  * @property {Block[]} blocks
+ * @property {number} completed
+ */
+
+/**
+ * @typedef {Object} File
+ * @property {number} length
+ * @property {string[]} path
+ * @property {number} [start]
+ * @property {number} [index]
  */
 
 export class Pieces {
   /**
    *
+   * @param {string} name
    * @param {PeerPool} peerPool
+   * @param {string[]} pieceHashes
    * @param {number} totalPieces
    * @param {number} pieceLength
    * @param {number} totalFileLength
+   * @param {File[]} files
    */
-  constructor(peerPool, totalPieces, pieceLength, totalFileLength) {
+  constructor(name, peerPool, pieceHashes, totalPieces, pieceLength, totalFileLength, files) {
+    this.name = name;
     this.peerPool = peerPool;
 
     // 16kb block size
     this.totalFileLength = totalFileLength;
     this.pieceLength = pieceLength;
+    this.pieceHashes = pieceHashes;
     this.totalPieces = totalPieces;
+    this.files = files;
 
     /**
      * @type {Piece[]}
      */
     this.allPieces = {};
 
+    this.pieceBuffers = [];
+
+    this.initializePieceBuffers();
     this.initializePieces();
+    this.initializeFileStart();
     this.runDownload();
   }
 
@@ -56,6 +77,7 @@ export class Pieces {
 
         blocks.push({
           status: Status.NEEDED,
+          index: i,
           offset: offset,
           length: currBlockLength
         });
@@ -65,9 +87,30 @@ export class Pieces {
 
       this.allPieces[i] = {
         status: Status.NEEDED,
-        blocks: blocks
+        blocks: blocks,
+        completed: 0
       };
     }
+  }
+
+  initializePieceBuffers() {
+    this.pieceBuffers = Array.from({ length: this.totalPieces }).map((_, i) => {
+      const currPieceLength = this.getPieceLength(i);
+      return Buffer.alloc(currPieceLength);
+    });
+  }
+
+  initializeFileStart() {
+    let curr = 0;
+    this.files = this.files.map((file, i) => {
+      let obj = {
+        index: i,
+        start: curr,
+        ...file
+      };
+      curr += file.length;
+      return obj;
+    });
   }
 
   getPieceLength(pieceIndex) {
@@ -88,27 +131,23 @@ export class Pieces {
       // Find what piece is needed
       const piece = this.getPieceNeededForPeer(peerObj?.bitfield);
 
-      if (typeof piece === null) continue;
+      if (piece === null) continue;
 
       // Get needed block for that piece
       const block = this.getBlockNeededForPiece(piece);
 
-      if (typeof block === null) continue;
+      if (block === null) continue;
 
       if (peerObj?.instance?.getRequestedQueueLength() < MAX_PEER_REQUESTS) {
         peerObj?.instance?.requestBlock(block);
 
         this.markBlockRequested(piece, block);
       }
-
-      // peerObj?.instance?
-
-      // Add to peer request queue
-
-      // console.log(peerKey, ' is free');
     }
 
-    setImmediate(() => this.runDownload());
+    const delay = freePeers.length === 0 ? 50 : 0;
+
+    setTimeout(() => this.runDownload(), delay);
   }
 
   findAvailablePeers() {
@@ -145,11 +184,32 @@ export class Pieces {
       (item) => item.offset === block.offset && item.length === block.length
     );
 
-    console.log('foundBlock', foundBlock)
-
     if (!foundBlock) return;
 
     foundBlock.status = Status.REQUESTED;
+  }
+
+  markBlockDownloaded(pieceIndex, blockOffset, data) {
+    const piece = this.allPieces[pieceIndex];
+    if (!piece) return;
+
+    const foundBlock = piece.blocks.find((item) => item.offset === blockOffset);
+
+    if (!foundBlock) return;
+
+    const pieceBuffer = this.pieceBuffers[pieceIndex];
+
+    data.copy(pieceBuffer, blockOffset);
+
+    foundBlock.status = Status.COMPLETE;
+
+    piece.completed += 1;
+
+    console.log(piece.completed + '/' + piece.blocks.length);
+
+    if (piece.completed === piece.blocks.length) {
+      this.verifyPiece(pieceIndex);
+    }
   }
 
   checkIsPieceNeeded(index) {
@@ -174,5 +234,89 @@ export class Pieces {
       }
     }
     return null;
+  }
+
+  verifyPiece(pieceIndex) {
+    const pieceBuffer = this.pieceBuffers[pieceIndex];
+
+    const hash = crypto.createHash('sha1');
+    hash.update(pieceBuffer);
+    const calcPieceHash = hash.digest('hex');
+
+    // Todo: Compare to torrent file SHA1 hash
+    const actualPieceHash = this.pieceHashes[pieceIndex];
+    const actualPieceHashHex = actualPieceHash.toString('hex');
+
+    console.log('hashes', calcPieceHash, ' ', actualPieceHashHex);
+
+    const isSame = actualPieceHashHex === calcPieceHash;
+    const piece = this.allPieces[pieceIndex];
+
+    if (isSame) {
+      piece.status = Status.COMPLETE;
+
+      // Todo: Save to disk
+      this.savePieceToFile(pieceIndex);
+    } else {
+      // Reset status and buffer
+      piece.blocks.forEach((block) => block.status === Status.NEEDED);
+      const pieceLength = this.getPieceLength(pieceIndex);
+      this.pieceBuffers[pieceIndex] = Buffer.alloc(pieceLength);
+    }
+  }
+
+  savePieceToFile(pieceIndex) {
+    console.log('saving');
+    const dataBuffer = this.pieceBuffers[pieceIndex];
+    const files = this.getFilesForPieceIndex(pieceIndex);
+
+    const pieceGlobalStart = pieceIndex * this.pieceLength;
+
+    for (const currFile of files) {
+      console.log('saving ---', currFile?.index);
+
+      const fileGlobalStart = currFile.start;
+      const fileGlobalEnd = currFile.start + currFile.length;
+
+      const overlapStart = Math.max(pieceGlobalStart, fileGlobalStart);
+
+      const pieceGlobalEnd = pieceGlobalStart + dataBuffer.length;
+      const overlapEnd = Math.min(pieceGlobalEnd, fileGlobalEnd);
+
+      const bufferSliceStart = overlapStart - pieceGlobalStart;
+      const bytesToWrite = overlapEnd - overlapStart;
+
+      const writeOffsetInFile = overlapStart - fileGlobalStart;
+
+      const dataToWrite = dataBuffer.subarray(bufferSliceStart, bufferSliceStart + bytesToWrite);
+
+      const currFilePath = DOWNLOAD_FOLDER + this.name + '/' + currFile?.path?.join('/');
+
+      saveBufferToFile(currFilePath, dataToWrite, writeOffsetInFile);
+    }
+  }
+
+  getFilesForPieceIndex(pieceIndex) {
+    const pieceStart = pieceIndex * this.pieceLength;
+    const pieceLength = this.getPieceLength(pieceIndex);
+    const pieceEnd = pieceStart + pieceLength;
+
+    const fileArr = [];
+
+    for (const currFile of this.files) {
+      const fileStart = currFile.start;
+      const fileEnd = currFile.start + currFile.length;
+
+      if (pieceStart < fileEnd && pieceEnd > fileStart) {
+        fileArr.push(currFile);
+      }
+
+      // If entire piece contained in file then break
+      if (fileStart >= pieceEnd) {
+        break;
+      }
+    }
+
+    return fileArr;
   }
 }

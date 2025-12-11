@@ -1,30 +1,62 @@
-import { SERVER_PORT } from '../constants/consts.js';
-import { getDNS, requestAnnounceWithTimeout } from '../lib/utils.js';
+import { DOWNLOAD_FOLDER, SERVER_PORT } from '../constants/consts.js';
+import { createFile, createFolder } from '../lib/fileHelpers.js';
+import { bufferToEncoding, requestAnnounceWithTimeout } from '../lib/torrentHelpers.js';
+import { getDNS } from '../lib/utils.js';
 import { Peer } from './Peer.js';
 import { PeerPool } from './PeerPool.js';
 import { Pieces } from './Pieces.js';
 import { Tracker } from './Tracker.js';
 
 export class TorrentClient {
-  constructor({ totalFileLength, infoHash, pieceLength, pieces, udpTrackers }) {
+  constructor({ totalFileLength, infoHash, pieceLength, pieces, udpTrackers, parsedFiles, parsedName }) {
     this.infoHash = infoHash;
     this.totalFileLength = totalFileLength;
     this.pieceLength = pieceLength;
     this.pieces = pieces;
     this.udpTrackers = udpTrackers;
+    this.files = parsedFiles;
+    this.name = parsedName;
 
     this.peerPool = new PeerPool();
 
     this.globalPieces = new Pieces(
+      this.name,
       this.peerPool,
+      this.pieces,
       this.pieces.length,
       this.pieceLength,
-      this.totalFileLength
+      this.totalFileLength,
+      parsedFiles
     );
   }
 
   async start() {
+    this.initializeFileStructure();
     await this.startTrackerAnnounce();
+  }
+
+  initializeFileStructure() {
+    const parsedName = DOWNLOAD_FOLDER + this.name;
+
+    // // Create name folder
+    createFolder(parsedName);
+
+    // Create files/folders inside
+    for (let i = 0; i < this.files.length; i++) {
+      const fileObj = this.files[i];
+      const path = fileObj?.path;
+      // const fileLength = fileObj.length;
+
+      const folderPath =
+        path?.length > 1 && [parsedName, ...path.slice(0, path.length - 1)]?.join('/');
+      if (folderPath) {
+        createFolder(folderPath);
+      }
+
+      const filePath = [parsedName, ...path].join('/');
+
+      createFile(filePath, Buffer.alloc(0));
+    }
   }
 
   async startTrackerAnnounce() {
