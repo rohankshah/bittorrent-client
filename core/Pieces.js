@@ -1,4 +1,5 @@
-import { BLOCK_SIZE, MAX_PEER_REQUESTS, Status } from '../constants/consts.js';
+import { BLOCK_SIZE, DOWNLOAD_FOLDER, MAX_PEER_REQUESTS, Status } from '../constants/consts.js';
+import { saveBufferToFile } from '../lib/fileHelpers.js';
 import { PeerPool } from './PeerPool.js';
 import crypto from 'crypto';
 
@@ -20,19 +21,23 @@ import crypto from 'crypto';
  * @typedef {Object} File
  * @property {number} length
  * @property {string[]} path
+ * @property {number} [start]
+ * @property {number} [index]
  */
 
 export class Pieces {
   /**
    *
+   * @param {string} name
    * @param {PeerPool} peerPool
    * @param {string[]} pieceHashes
    * @param {number} totalPieces
    * @param {number} pieceLength
    * @param {number} totalFileLength
-   * @param {File} files
+   * @param {File[]} files
    */
-  constructor(peerPool, pieceHashes, totalPieces, pieceLength, totalFileLength, files) {
+  constructor(name, peerPool, pieceHashes, totalPieces, pieceLength, totalFileLength, files) {
+    this.name = name;
     this.peerPool = peerPool;
 
     // 16kb block size
@@ -51,6 +56,7 @@ export class Pieces {
 
     this.initializePieceBuffers();
     this.initializePieces();
+    this.initializeFileStart();
     this.runDownload();
   }
 
@@ -91,6 +97,19 @@ export class Pieces {
     this.pieceBuffers = Array.from({ length: this.totalPieces }).map((_, i) => {
       const currPieceLength = this.getPieceLength(i);
       return Buffer.alloc(currPieceLength);
+    });
+  }
+
+  initializeFileStart() {
+    let curr = 0;
+    this.files = this.files.map((file, i) => {
+      let obj = {
+        index: i,
+        start: curr,
+        ...file
+      };
+      curr += file.length;
+      return obj;
     });
   }
 
@@ -186,7 +205,7 @@ export class Pieces {
 
     piece.completed += 1;
 
-    console.log(piece.completed + '/' + piece.blocks.length)
+    console.log(piece.completed + '/' + piece.blocks.length);
 
     if (piece.completed === piece.blocks.length) {
       this.verifyPiece(pieceIndex);
@@ -234,16 +253,70 @@ export class Pieces {
     const piece = this.allPieces[pieceIndex];
 
     if (isSame) {
-      console.log('is same')
       piece.status = Status.COMPLETE;
 
       // Todo: Save to disk
+      this.savePieceToFile(pieceIndex);
     } else {
-      console.log('is different')
+      // Reset status and buffer
       piece.blocks.forEach((block) => block.status === Status.NEEDED);
-
       const pieceLength = this.getPieceLength(pieceIndex);
       this.pieceBuffers[pieceIndex] = Buffer.alloc(pieceLength);
     }
+  }
+
+  savePieceToFile(pieceIndex) {
+    console.log('saving');
+    const dataBuffer = this.pieceBuffers[pieceIndex];
+    const files = this.getFilesForPieceIndex(pieceIndex);
+
+    const pieceGlobalStart = pieceIndex * this.pieceLength;
+
+    for (const currFile of files) {
+      console.log('saving ---', currFile?.index);
+
+      const fileGlobalStart = currFile.start;
+      const fileGlobalEnd = currFile.start + currFile.length;
+
+      const overlapStart = Math.max(pieceGlobalStart, fileGlobalStart);
+
+      const pieceGlobalEnd = pieceGlobalStart + dataBuffer.length;
+      const overlapEnd = Math.min(pieceGlobalEnd, fileGlobalEnd);
+
+      const bufferSliceStart = overlapStart - pieceGlobalStart;
+      const bytesToWrite = overlapEnd - overlapStart;
+
+      const writeOffsetInFile = overlapStart - fileGlobalStart;
+
+      const dataToWrite = dataBuffer.subarray(bufferSliceStart, bufferSliceStart + bytesToWrite);
+
+      const currFilePath = DOWNLOAD_FOLDER + this.name + '/' + currFile?.path?.join('/');
+
+      saveBufferToFile(currFilePath, dataToWrite, writeOffsetInFile);
+    }
+  }
+
+  getFilesForPieceIndex(pieceIndex) {
+    const pieceStart = pieceIndex * this.pieceLength;
+    const pieceLength = this.getPieceLength(pieceIndex);
+    const pieceEnd = pieceStart + pieceLength;
+
+    const fileArr = [];
+
+    for (const currFile of this.files) {
+      const fileStart = currFile.start;
+      const fileEnd = currFile.start + currFile.length;
+
+      if (pieceStart < fileEnd && pieceEnd > fileStart) {
+        fileArr.push(currFile);
+      }
+
+      // If entire piece contained in file then break
+      if (fileStart >= pieceEnd) {
+        break;
+      }
+    }
+
+    return fileArr;
   }
 }

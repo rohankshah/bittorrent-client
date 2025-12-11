@@ -8,24 +8,25 @@ import { Pieces } from './Pieces.js';
 import { Tracker } from './Tracker.js';
 
 export class TorrentClient {
-  constructor({ totalFileLength, infoHash, pieceLength, pieces, udpTrackers, parsedFiles, name }) {
+  constructor({ totalFileLength, infoHash, pieceLength, pieces, udpTrackers, parsedFiles, parsedName }) {
     this.infoHash = infoHash;
     this.totalFileLength = totalFileLength;
     this.pieceLength = pieceLength;
     this.pieces = pieces;
     this.udpTrackers = udpTrackers;
     this.files = parsedFiles;
-    this.name = name;
+    this.name = parsedName;
 
     this.peerPool = new PeerPool();
 
     this.globalPieces = new Pieces(
+      this.name,
       this.peerPool,
       this.pieces,
       this.pieces.length,
       this.pieceLength,
       this.totalFileLength,
-      this.parsedFiles
+      parsedFiles
     );
   }
 
@@ -35,7 +36,7 @@ export class TorrentClient {
   }
 
   initializeFileStructure() {
-    const parsedName = DOWNLOAD_FOLDER + bufferToEncoding(this.name, 'utf8');
+    const parsedName = DOWNLOAD_FOLDER + this.name;
 
     // // Create name folder
     createFolder(parsedName);
@@ -43,7 +44,7 @@ export class TorrentClient {
     // Create files/folders inside
     for (let i = 0; i < this.files.length; i++) {
       const fileObj = this.files[i];
-      const path = fileObj?.path
+      const path = fileObj?.path;
       // const fileLength = fileObj.length;
 
       const folderPath =
