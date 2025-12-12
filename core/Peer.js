@@ -1,6 +1,7 @@
 import net from 'net';
 import { generateRandomString } from '../lib/utils.js';
 import {
+  createAnnounceHaveBuffer,
   createHandshakeBuffer,
   createInterestBuffer,
   createRequestBlockBuffer
@@ -153,6 +154,10 @@ export class Peer {
         case 5:
           this.handleBitfield(payload);
           break;
+        case 6:
+          console.log('peer has requested block')
+          this.handleRequestFromPeer(payload);
+          break;
         case 7:
           this.handleReceivePiece(payload);
           break;
@@ -168,6 +173,14 @@ export class Peer {
     this.bitfieldReceived = true;
 
     this.sendInterest();
+  }
+
+  handleRequestFromPeer(payload) {
+    const pieceIndex = payload.readUInt32BE(0)
+    const offset = payload.readUInt32BE(4)
+    const length = payload.readUInt32BE(8)
+
+    console.log('request block', pieceIndex, offset, length)
   }
 
   handleReceivePiece(payload) {
@@ -188,6 +201,14 @@ export class Peer {
 
     this.requestedQueue.push({ ...block, requested: Date.now() });
     // console.log('requested');
+  }
+
+  announceHavePiece(pieceIndex) {
+    const buf = createAnnounceHaveBuffer(pieceIndex)
+
+    this.socket.write(buf)
+
+    console.log('announced to peer have ', pieceIndex)
   }
 
   getRequestedQueueLength() {

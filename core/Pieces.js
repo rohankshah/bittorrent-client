@@ -150,6 +150,12 @@ export class Pieces {
     setTimeout(() => this.runDownload(), delay);
   }
 
+  announceHave(pieceIndex) {
+    for (const [peerKey, peerObj] of this.peerPool.peerDetailsMap.entries()) {
+      peerObj?.instance?.announceHavePiece(pieceIndex)
+    }
+  }
+
   findAvailablePeers() {
     const freePeers = [];
     for (const [peerKey, peerObj] of this.peerPool.peerDetailsMap.entries()) {
@@ -247,7 +253,7 @@ export class Pieces {
     const actualPieceHash = this.pieceHashes[pieceIndex];
     const actualPieceHashHex = actualPieceHash.toString('hex');
 
-    console.log('hashes', calcPieceHash, ' ', actualPieceHashHex);
+    // console.log('hashes', calcPieceHash, ' ', actualPieceHashHex);
 
     const isSame = actualPieceHashHex === calcPieceHash;
     const piece = this.allPieces[pieceIndex];
@@ -255,8 +261,9 @@ export class Pieces {
     if (isSame) {
       piece.status = Status.COMPLETE;
 
-      // Todo: Save to disk
       this.savePieceToFile(pieceIndex);
+
+      this.announceHave(pieceIndex);
     } else {
       // Reset status and buffer
       piece.blocks.forEach((block) => block.status === Status.NEEDED);
@@ -266,14 +273,13 @@ export class Pieces {
   }
 
   savePieceToFile(pieceIndex) {
-    console.log('saving');
     const dataBuffer = this.pieceBuffers[pieceIndex];
     const files = this.getFilesForPieceIndex(pieceIndex);
 
     const pieceGlobalStart = pieceIndex * this.pieceLength;
 
     for (const currFile of files) {
-      console.log('saving ---', currFile?.index);
+      console.log('saving ---', currFile?.path);
 
       const fileGlobalStart = currFile.start;
       const fileGlobalEnd = currFile.start + currFile.length;
