@@ -9,6 +9,7 @@ import {
 } from '../lib/createMessages.js';
 import { Pieces } from './Pieces.js';
 import { getPiecesFromBitfield } from '../lib/torrentHelpers.js';
+import { MAX_PEER_REQUESTS } from '../constants/consts.js';
 
 export class Peer {
   /**
@@ -100,6 +101,9 @@ export class Peer {
         // console.log('received handshake');
         this.handShakeReceived = true;
         this.connectSuccessCallback();
+
+        // Send bitfield after handshake
+        this.sendBitfield();
       } else {
         this.disconnect();
       }
@@ -133,11 +137,11 @@ export class Peer {
 
       switch (parseInt(messageId)) {
         case 0:
-          console.log('choke');
+          // console.log('choke');
           this.peerChoking = true;
           break;
         case 1:
-          console.log('unchoke');
+          // console.log('unchoke');
           this.peerChoking = false;
           break;
         case 2:
@@ -174,7 +178,6 @@ export class Peer {
     this.bitfieldReceived = true;
 
     this.sendInterest();
-    this.sendBitfield();
   }
 
   handleRequestFromPeer(payload) {
@@ -202,15 +205,12 @@ export class Peer {
     this.socket.write(buf);
 
     this.requestedQueue.push({ ...block, requested: Date.now() });
-    // console.log('requested');
   }
 
   announceHavePiece(pieceIndex) {
     const buf = createAnnounceHaveBuffer(pieceIndex);
 
     this.socket.write(buf);
-
-    console.log('announced to peer have ', pieceIndex);
   }
 
   getRequestedQueueLength() {
@@ -222,7 +222,7 @@ export class Peer {
 
     this.socket.write(buf);
     this.amInterested = true;
-    console.log('send interest');
+    // console.log('send interest');
   }
 
   sendBitfield() {
@@ -231,11 +231,14 @@ export class Peer {
     const buf = createBitfieldMessage(bitfieldBuffer);
 
     this.socket.write(buf);
-    console.log('sent bitfield to peer');
   }
 
   isPeerFree() {
-    if (this.peerChoking || !this.bitfieldReceived) {
+    if (
+      this.peerChoking ||
+      !this.bitfieldReceived ||
+      this.getRequestedQueueLength() >= MAX_PEER_REQUESTS
+    ) {
       return false;
     }
     return true;

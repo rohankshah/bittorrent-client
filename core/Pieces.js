@@ -133,16 +133,18 @@ export class Pieces {
 
       if (piece === null) continue;
 
+      // console.log('piece needed', piece);
+
       // Get needed block for that piece
       const block = this.getBlockNeededForPiece(piece);
 
+      // console.log('block needed', block);
+
       if (block === null) continue;
 
-      if (peerObj?.instance?.getRequestedQueueLength() < MAX_PEER_REQUESTS) {
-        peerObj?.instance?.requestBlock(block);
+      peerObj?.instance?.requestBlock(block);
 
-        this.markBlockRequested(piece, block);
-      }
+      this.markBlockRequested(piece, block);
     }
 
     const delay = freePeers.length === 0 ? 50 : 0;
@@ -211,7 +213,7 @@ export class Pieces {
 
     piece.completed += 1;
 
-    console.log(piece.completed + '/' + piece.blocks.length);
+    // console.log(piece.completed + '/' + piece.blocks.length);
 
     if (piece.completed === piece.blocks.length) {
       this.verifyPiece(pieceIndex);
@@ -223,7 +225,7 @@ export class Pieces {
 
     if (!piece) return false;
 
-    return (piece.status = Status.NEEDED ? true : false);
+    return piece.status === Status.NEEDED ? true : false;
   }
 
   getBlockNeededForPiece(pieceIndex) {
@@ -259,11 +261,12 @@ export class Pieces {
     const piece = this.allPieces[pieceIndex];
 
     if (isSame) {
-      piece.status = Status.COMPLETE;
+      this.allPieces[pieceIndex].status = Status.COMPLETE;
 
       this.savePieceToFile(pieceIndex);
 
       this.announceHave(pieceIndex);
+      console.log(`downloaded ${pieceIndex + 1} / ${this.allPieces.length}`);
     } else {
       // Reset status and buffer
       piece.blocks.forEach((block) => block.status === Status.NEEDED);
