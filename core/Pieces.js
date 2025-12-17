@@ -50,7 +50,7 @@ export class Pieces {
     /**
      * @type {Piece[]}
      */
-    this.allPieces = {};
+    this.allPieces = [];
 
     this.pieceBuffers = [];
 
@@ -152,7 +152,7 @@ export class Pieces {
 
   announceHave(pieceIndex) {
     for (const [peerKey, peerObj] of this.peerPool.peerDetailsMap.entries()) {
-      peerObj?.instance?.announceHavePiece(pieceIndex)
+      peerObj?.instance?.announceHavePiece(pieceIndex);
     }
   }
 
@@ -324,5 +324,24 @@ export class Pieces {
     }
 
     return fileArr;
+  }
+
+  createBitfield() {
+    const bitfieldArr = this.allPieces?.map((piece) => (piece?.status === 'COMPLETE' ? 1 : 0));
+
+    // 8 bits per byte
+    const byteCount = Math.ceil(bitfieldArr.length / 8);
+    const buffer = new Uint8Array(byteCount);
+
+    for (let i = 0; i < bitfieldArr.length; i++) {
+      if (bitfieldArr[i] === 1) {
+        const byteIndex = Math.floor(i / 8);
+        const bitIndex = 7 - (i % 8);
+
+        buffer[byteIndex] |= 1 << bitIndex;
+      }
+    }
+
+    return buffer;
   }
 }

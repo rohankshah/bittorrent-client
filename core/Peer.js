@@ -2,6 +2,7 @@ import net from 'net';
 import { generateRandomString } from '../lib/utils.js';
 import {
   createAnnounceHaveBuffer,
+  createBitfieldMessage,
   createHandshakeBuffer,
   createInterestBuffer,
   createRequestBlockBuffer
@@ -155,7 +156,7 @@ export class Peer {
           this.handleBitfield(payload);
           break;
         case 6:
-          console.log('peer has requested block')
+          console.log('peer has requested block');
           this.handleRequestFromPeer(payload);
           break;
         case 7:
@@ -173,14 +174,15 @@ export class Peer {
     this.bitfieldReceived = true;
 
     this.sendInterest();
+    this.sendBitfield();
   }
 
   handleRequestFromPeer(payload) {
-    const pieceIndex = payload.readUInt32BE(0)
-    const offset = payload.readUInt32BE(4)
-    const length = payload.readUInt32BE(8)
+    const pieceIndex = payload.readUInt32BE(0);
+    const offset = payload.readUInt32BE(4);
+    const length = payload.readUInt32BE(8);
 
-    console.log('request block', pieceIndex, offset, length)
+    console.log('request block', pieceIndex, offset, length);
   }
 
   handleReceivePiece(payload) {
@@ -204,11 +206,11 @@ export class Peer {
   }
 
   announceHavePiece(pieceIndex) {
-    const buf = createAnnounceHaveBuffer(pieceIndex)
+    const buf = createAnnounceHaveBuffer(pieceIndex);
 
-    this.socket.write(buf)
+    this.socket.write(buf);
 
-    console.log('announced to peer have ', pieceIndex)
+    console.log('announced to peer have ', pieceIndex);
   }
 
   getRequestedQueueLength() {
@@ -221,6 +223,15 @@ export class Peer {
     this.socket.write(buf);
     this.amInterested = true;
     console.log('send interest');
+  }
+
+  sendBitfield() {
+    const bitfieldBuffer = this.globalPieces.createBitfield();
+
+    const buf = createBitfieldMessage(bitfieldBuffer);
+
+    this.socket.write(buf);
+    console.log('sent bitfield to peer');
   }
 
   isPeerFree() {
