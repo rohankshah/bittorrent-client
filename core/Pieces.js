@@ -50,7 +50,7 @@ export class Pieces {
     /**
      * @type {Piece[]}
      */
-    this.allPieces = {};
+    this.allPieces = [];
 
     this.pieceBuffers = [];
 
@@ -133,21 +133,32 @@ export class Pieces {
 
       if (piece === null) continue;
 
+      // console.log('piece needed', piece);
+
       // Get needed block for that piece
       const block = this.getBlockNeededForPiece(piece);
 
+      // console.log('block needed', block);
+
       if (block === null) continue;
 
-      if (peerObj?.instance?.getRequestedQueueLength() < MAX_PEER_REQUESTS) {
-        peerObj?.instance?.requestBlock(block);
+      peerObj?.instance?.requestBlock(block);
 
-        this.markBlockRequested(piece, block);
-      }
+      // Todo:
+      // 1. Add some sort of timeout to the request. When timed-out remove from peer requestQueue and mark block as 'NEEDED'
+
+      this.markBlockRequested(piece, block);
     }
 
     const delay = freePeers.length === 0 ? 50 : 0;
 
     setTimeout(() => this.runDownload(), delay);
+  }
+
+  announceHave(pieceIndex) {
+    for (const [peerKey, peerObj] of this.peerPool.peerDetailsMap.entries()) {
+      peerObj?.instance?.announceHavePiece(pieceIndex);
+    }
   }
 
   findAvailablePeers() {
@@ -205,7 +216,7 @@ export class Pieces {
 
     piece.completed += 1;
 
-    console.log(piece.completed + '/' + piece.blocks.length);
+    // console.log(piece.completed + '/' + piece.blocks.length);
 
     if (piece.completed === piece.blocks.length) {
       this.verifyPiece(pieceIndex);
@@ -217,7 +228,7 @@ export class Pieces {
 
     if (!piece) return false;
 
-    return (piece.status = Status.NEEDED ? true : false);
+    return piece.status === Status.NEEDED ? true : false;
   }
 
   getBlockNeededForPiece(pieceIndex) {
@@ -243,20 +254,22 @@ export class Pieces {
     hash.update(pieceBuffer);
     const calcPieceHash = hash.digest('hex');
 
-    // Todo: Compare to torrent file SHA1 hash
+    // Compare to torrent file SHA1 hash
     const actualPieceHash = this.pieceHashes[pieceIndex];
     const actualPieceHashHex = actualPieceHash.toString('hex');
 
-    console.log('hashes', calcPieceHash, ' ', actualPieceHashHex);
+    // console.log('hashes', calcPieceHash, ' ', actualPieceHashHex);
 
     const isSame = actualPieceHashHex === calcPieceHash;
     const piece = this.allPieces[pieceIndex];
 
     if (isSame) {
-      piece.status = Status.COMPLETE;
+      this.allPieces[pieceIndex].status = Status.COMPLETE;
 
-      // Todo: Save to disk
       this.savePieceToFile(pieceIndex);
+
+      this.announceHave(pieceIndex);
+      console.log(`downloaded ${pieceIndex + 1} / ${this.allPieces.length}`);
     } else {
       // Reset status and buffer
       piece.blocks.forEach((block) => block.status === Status.NEEDED);
@@ -266,14 +279,13 @@ export class Pieces {
   }
 
   savePieceToFile(pieceIndex) {
-    console.log('saving');
     const dataBuffer = this.pieceBuffers[pieceIndex];
     const files = this.getFilesForPieceIndex(pieceIndex);
 
     const pieceGlobalStart = pieceIndex * this.pieceLength;
 
     for (const currFile of files) {
-      console.log('saving ---', currFile?.index);
+      console.log('saving ---', currFile?.path);
 
       const fileGlobalStart = currFile.start;
       const fileGlobalEnd = currFile.start + currFile.length;
@@ -318,5 +330,24 @@ export class Pieces {
     }
 
     return fileArr;
+  }
+
+  createBitfield() {
+    const bitfieldArr = this.allPieces?.map((piece) => (piece?.status === 'COMPLETE' ? 1 : 0));
+
+    // 8 bits per byte
+    const byteCount = Math.ceil(bitfieldArr.length / 8);
+    const buffer = new Uint8Array(byteCount);
+
+    for (let i = 0; i < bitfieldArr.length; i++) {
+      if (bitfieldArr[i] === 1) {
+        const byteIndex = Math.floor(i / 8);
+        const bitIndex = 7 - (i % 8);
+
+        buffer[byteIndex] |= 1 << bitIndex;
+      }
+    }
+
+    return buffer;
   }
 }

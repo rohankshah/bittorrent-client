@@ -1,12 +1,15 @@
 import net from 'net';
 import { generateRandomString } from '../lib/utils.js';
 import {
+  createAnnounceHaveBuffer,
+  createBitfieldMessage,
   createHandshakeBuffer,
   createInterestBuffer,
   createRequestBlockBuffer
 } from '../lib/createMessages.js';
 import { Pieces } from './Pieces.js';
 import { getPiecesFromBitfield } from '../lib/torrentHelpers.js';
+import { MAX_PEER_REQUESTS } from '../constants/consts.js';
 
 export class Peer {
   /**
@@ -98,6 +101,9 @@ export class Peer {
         // console.log('received handshake');
         this.handShakeReceived = true;
         this.connectSuccessCallback();
+
+        // Send bitfield after handshake
+        this.sendBitfield();
       } else {
         this.disconnect();
       }
@@ -131,11 +137,11 @@ export class Peer {
 
       switch (parseInt(messageId)) {
         case 0:
-          console.log('choke');
+          // console.log('choke');
           this.peerChoking = true;
           break;
         case 1:
-          console.log('unchoke');
+          // console.log('unchoke');
           this.peerChoking = false;
           break;
         case 2:
@@ -153,6 +159,10 @@ export class Peer {
         case 5:
           this.handleBitfield(payload);
           break;
+        case 6:
+          console.log('peer has requested block');
+          this.handleRequestFromPeer(payload);
+          break;
         case 7:
           this.handleReceivePiece(payload);
           break;
@@ -168,6 +178,14 @@ export class Peer {
     this.bitfieldReceived = true;
 
     this.sendInterest();
+  }
+
+  handleRequestFromPeer(payload) {
+    const pieceIndex = payload.readUInt32BE(0);
+    const offset = payload.readUInt32BE(4);
+    const length = payload.readUInt32BE(8);
+
+    console.log('request block', pieceIndex, offset, length);
   }
 
   handleReceivePiece(payload) {
@@ -187,7 +205,12 @@ export class Peer {
     this.socket.write(buf);
 
     this.requestedQueue.push({ ...block, requested: Date.now() });
-    // console.log('requested');
+  }
+
+  announceHavePiece(pieceIndex) {
+    const buf = createAnnounceHaveBuffer(pieceIndex);
+
+    this.socket.write(buf);
   }
 
   getRequestedQueueLength() {
@@ -199,11 +222,23 @@ export class Peer {
 
     this.socket.write(buf);
     this.amInterested = true;
-    console.log('send interest');
+    // console.log('send interest');
+  }
+
+  sendBitfield() {
+    const bitfieldBuffer = this.globalPieces.createBitfield();
+
+    const buf = createBitfieldMessage(bitfieldBuffer);
+
+    this.socket.write(buf);
   }
 
   isPeerFree() {
-    if (this.peerChoking || !this.bitfieldReceived) {
+    if (
+      this.peerChoking ||
+      !this.bitfieldReceived ||
+      this.getRequestedQueueLength() >= MAX_PEER_REQUESTS
+    ) {
       return false;
     }
     return true;
