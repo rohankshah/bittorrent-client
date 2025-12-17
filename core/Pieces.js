@@ -144,6 +144,9 @@ export class Pieces {
 
       peerObj?.instance?.requestBlock(block);
 
+      // Todo:
+      // 1. Add some sort of timeout to the request. When timed-out remove from peer requestQueue and mark block as 'NEEDED'
+
       this.markBlockRequested(piece, block);
     }
 
@@ -251,7 +254,7 @@ export class Pieces {
     hash.update(pieceBuffer);
     const calcPieceHash = hash.digest('hex');
 
-    // Todo: Compare to torrent file SHA1 hash
+    // Compare to torrent file SHA1 hash
     const actualPieceHash = this.pieceHashes[pieceIndex];
     const actualPieceHashHex = actualPieceHash.toString('hex');
 
