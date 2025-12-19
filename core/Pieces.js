@@ -2,6 +2,7 @@ import { BLOCK_SIZE, DOWNLOAD_FOLDER, MAX_PEER_REQUESTS, Status } from '../const
 import { saveBufferToFile } from '../lib/fileHelpers.js';
 import { PeerPool } from './PeerPool.js';
 import crypto from 'crypto';
+import cliProgress from 'cli-progress';
 
 /**
  * @typedef {Object} Block
@@ -47,12 +48,22 @@ export class Pieces {
     this.totalPieces = totalPieces;
     this.files = files;
 
+    // Initialize download progress bar
+    this.progressBar = new cliProgress.SingleBar(
+      {
+        format: '{bar}' + '| {percentage}% || {value}/{total} pieces || Free Peers: {peers} '
+      },
+      cliProgress.Presets.shades_classic
+    );
+
     /**
      * @type {Piece[]}
      */
     this.allPieces = [];
 
     this.pieceBuffers = [];
+
+    this.piecesComplete = [];
 
     this.initializePieceBuffers();
     this.initializePieces();
@@ -91,6 +102,10 @@ export class Pieces {
         completed: 0
       };
     }
+
+    this.progressBar.start(this.totalPieces, 0, {
+      peers: 0
+    });
   }
 
   initializePieceBuffers() {
@@ -126,6 +141,10 @@ export class Pieces {
     // Find free peers
     const freePeers = this.findAvailablePeers();
 
+    this.progressBar.update(this.piecesComplete.length, {
+      peers: freePeers.length
+    });
+
     // Loop through free peers
     for (const [peerKey, peerObj] of freePeers) {
       // Find what piece is needed
@@ -134,7 +153,6 @@ export class Pieces {
       if (piece === null) continue;
 
       // console.log('piece needed', piece);
-
       // Get needed block for that piece
       const block = this.getBlockNeededForPiece(piece);
 
@@ -247,6 +265,18 @@ export class Pieces {
     return null;
   }
 
+  setBlockAsNeeded(pieceIndex, blockOffset) {
+    const piece = this.allPieces[pieceIndex];
+
+    if (!piece) return;
+
+    const block = piece.blocks.find((block) => block.offset === blockOffset);
+
+    if (!block) return;
+
+    block.status = Status.NEEDED;
+  }
+
   verifyPiece(pieceIndex) {
     const pieceBuffer = this.pieceBuffers[pieceIndex];
 
@@ -269,7 +299,20 @@ export class Pieces {
       this.savePieceToFile(pieceIndex);
 
       this.announceHave(pieceIndex);
-      console.log(`downloaded ${pieceIndex + 1} / ${this.allPieces.length}`);
+      this.piecesComplete.push(pieceIndex);
+
+      if (this.piecesComplete.length === this.totalPieces) {
+        this.progressBar.stop();
+        return;
+      }
+
+      // Update progress bar
+      this.progressBar.update(this.piecesComplete.length);
+      // console.log(
+      //   `downloaded ${pieceIndex + 1} / ${this.allPieces.length} - ${
+      //     (this.piecesComplete.length / this.allPieces.length) * 100
+      //   }`
+      // );
     } else {
       // Reset status and buffer
       piece.blocks.forEach((block) => block.status === Status.NEEDED);
@@ -285,7 +328,7 @@ export class Pieces {
     const pieceGlobalStart = pieceIndex * this.pieceLength;
 
     for (const currFile of files) {
-      console.log('saving ---', currFile?.path);
+      // console.log('saving ---', currFile?.path);
 
       const fileGlobalStart = currFile.start;
       const fileGlobalEnd = currFile.start + currFile.length;

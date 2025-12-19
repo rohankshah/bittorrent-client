@@ -9,7 +9,7 @@ import {
 } from '../lib/createMessages.js';
 import { Pieces } from './Pieces.js';
 import { getPiecesFromBitfield } from '../lib/torrentHelpers.js';
-import { MAX_PEER_REQUESTS } from '../constants/consts.js';
+import { MAX_PEER_REQUESTS, PEER_BLOCK_TIMEOUT, Status } from '../constants/consts.js';
 
 export class Peer {
   /**
@@ -193,9 +193,8 @@ export class Peer {
     const blockOffset = payload.readUInt32BE(4);
     const data = payload.subarray(8);
 
-    this.requestedQueue = this.requestedQueue.filter(
-      (block) => !(block.index === pieceIndex && block.offset === blockOffset)
-    );
+    this.removeBlockFromRequestedQueue(pieceIndex, blockOffset);
+
     this.globalPieces.markBlockDownloaded(pieceIndex, blockOffset, data);
   }
 
@@ -205,6 +204,24 @@ export class Peer {
     this.socket.write(buf);
 
     this.requestedQueue.push({ ...block, requested: Date.now() });
+
+    const pieceIndex = block.index;
+    const blockOffset = block.offset;
+
+    // If block hasn't been downloaded in 20 seconds, we timeout
+    // 1. Remove block from requested queue, freeing the peer
+    // 2. Set global block status to 'NEEDED'
+    setTimeout(() => {
+      const globalPiece = this.globalPieces.allPieces?.[pieceIndex];
+      const globalBlock = globalPiece?.blocks?.find((block) => block?.offset === blockOffset);
+
+      if (globalBlock?.status === Status.REQUESTED) {
+        // remove block from queue
+        this.removeBlockFromRequestedQueue(pieceIndex, blockOffset);
+        // set status to needed
+        this.globalPieces.setBlockAsNeeded(pieceIndex, blockOffset);
+      }
+    }, PEER_BLOCK_TIMEOUT);
   }
 
   announceHavePiece(pieceIndex) {
@@ -242,6 +259,12 @@ export class Peer {
       return false;
     }
     return true;
+  }
+
+  removeBlockFromRequestedQueue(pieceIndex, blockOffset) {
+    this.requestedQueue = this.requestedQueue.filter(
+      (block) => !(block.index === pieceIndex && block.offset === blockOffset)
+    );
   }
 
   disconnect() {

@@ -1,4 +1,4 @@
-import { DOWNLOAD_FOLDER, SERVER_PORT } from '../constants/consts.js';
+import { DOWNLOAD_FOLDER, MAX_CONNECTED_PEERS, SERVER_PORT } from '../constants/consts.js';
 import { createFile, createFolder } from '../lib/fileHelpers.js';
 import { bufferToEncoding, requestAnnounceWithTimeout } from '../lib/torrentHelpers.js';
 import { getDNS } from '../lib/utils.js';
@@ -87,11 +87,11 @@ export class TorrentClient {
   }
 
   // Fired when new peer added
-  // Active peers less than 40 && Connect peer
+  // Active peers less than MAX_CONNECTED_PEERS && Connect peer
   handleNewPeer() {
     const connectedPeers = this.peerPool.getNumberOfconnectedPeers();
 
-    if (connectedPeers < 40) {
+    if (connectedPeers < MAX_CONNECTED_PEERS) {
       const peer = this.peerPool.getPeer();
       const { ip, port } = peer;
 
